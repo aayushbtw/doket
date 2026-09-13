@@ -37,8 +37,7 @@ const tsconfig = JSON.stringify({
     noEmit: true,
     paths: {
       tomekit: [SOURCE],
-      "tomekit/content": ["./.tomekit/content"],
-      "tomekit/content/*": ["./.tomekit/content/*"],
+      "tomekit/content*": ["./.tomekit/content*"],
     },
     skipLibCheck: true,
     strict: true,
