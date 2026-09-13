@@ -7,13 +7,13 @@ Point tomekit at a folder of Markdown files and a schema. At build time it reads
 ```ts
 import { content } from "tomekit/content";
 
-content.posts.findMany({ orderBy: { publishedAt: "desc" }, take: 5 });
-content.posts.findUnique({ where: { slug: "hello-world" } });
+content.posts.all.filter((post) => post.tags.includes("vite"));
+content.posts.get("hello-world");
 ```
 
 ## Why tomekit
 
-- **It is only a Vite plugin.** There is no separate CLI, watcher process, or generated folder. Content reloads with the rest of your dev server.
+- **It is only a Vite plugin.** There is no separate CLI or watcher process. Content reloads with the rest of your dev server.
 - **It ships data, not a parser.** Frontmatter is parsed and validated during the build, so a typo fails the build, not a request.
 - **It does not render Markdown.** Your transform gets the raw body and you parse it with whatever you already use. That is also why tomekit has one dependency.
 - **It works with any validator.** Schemas use [Standard Schema](https://standardschema.dev), so Zod, Valibot and ArkType all work.
@@ -64,7 +64,10 @@ export default defineConfig({
 ```json
 {
   "compilerOptions": {
-    "paths": { "tomekit/content": ["./.tomekit/content"] }
+    "paths": {
+      "tomekit/content": ["./.tomekit/content"],
+      "tomekit/content/*": ["./.tomekit/content/*"]
+    }
   }
 }
 ```
@@ -73,19 +76,19 @@ export default defineConfig({
 .tomekit
 ```
 
-**4. Query your content** anywhere in your app:
+**4. Read your content** anywhere in your app:
 
 ```ts
 import { content } from "tomekit/content";
 
-const post = content.posts.findUnique({ where: { slug } });
+const post = content.posts.get(slug);
 ```
 
 Whenever content loads, the plugin writes types for every collection into `.tomekit/content`: what each document looks like and which slugs exist. They are rewritten only when a collection or a slug changes. Importing `tomekit/content` without the plugin throws an error that says so.
 
 ## Types
 
-Each collection gets a document type and a slug type, named after its key in PascalCase:
+Each collection gets a document type and a slug type, named after its key in PascalCase. `AnyDocument` is a document from any collection.
 
 ```ts
 import { content, type Posts, type PostsSlug } from "tomekit/content";
@@ -94,63 +97,50 @@ function title(post: Posts) {
   return post.title;
 }
 
-content.posts.findUnique({ where: { slug: "hello-world" } }); // suggests PostsSlug values, accepts any string
+post.slug; // PostsSlug, eg "hello-world" | "setup"
+content.posts.get("hello-world"); // suggests PostsSlug values, accepts any string
 ```
 
 The types only update while Vite is running, so after a fresh clone, run `vite dev` or `vite build` once before `tsc`.
 
-## Queries
+## Reading content
 
-Every collection has the same four methods. They run in memory on data built ahead of time, so they are synchronous.
+Every collection has three members. The data is built ahead of time, so everything is synchronous.
 
 ```ts
-content.posts.findMany(); // every post, in file name order
-
-content.posts.findMany({
-  where: { draft: false, tags: { has: "vite" } },
-  orderBy: { publishedAt: "desc" },
-  skip: 10,
-  take: 5,
-});
-
-content.posts.findFirst({ orderBy: { publishedAt: "desc" } }); // Post | undefined
-content.posts.findUnique({ where: { slug: "hello-world" } }); // Post | undefined
-content.posts.count({ where: { draft: false } }); // number
+content.posts.all; // readonly Posts[], in file name order
+content.posts.get("hello-world"); // Posts | undefined
+content.posts.slugs; // readonly PostsSlug[], in the same order as `all`
 ```
 
-### `where`
-
-A plain value matches by equality, and Dates compare by time. For anything else, use an operator:
-
-| Operator | Applies to | Matches when the field |
-| --- | --- | --- |
-| `equals`, `not` | any | is, or is not, the value |
-| `in`, `notIn` | any | is, or is not, one of the values |
-| `has` | arrays | contains the value |
-| `contains`, `startsWith`, `endsWith` | strings | contains, starts with, or ends with the text |
-| `gt`, `gte`, `lt`, `lte` | numbers, strings, Dates | is greater or less than the value |
-
-Several fields or operators must all match. Wrap a filter in `NOT` to invert it. For anything the operators cannot express, pass a function:
+`all` is a plain array, so a query is ordinary JavaScript, and a reusable query is a function:
 
 ```ts
-content.posts.findMany({ where: { NOT: { tags: { has: "draft" } } } });
-content.posts.findMany({ where: (post) => post.tags.length > 2 });
+const newest = <T extends { publishedAt: Date }>(documents: readonly T[]) =>
+  documents.toSorted(
+    (a, b) => b.publishedAt.getTime() - a.publishedAt.getTime()
+  );
+
+newest(content.posts.all.filter((post) => post.tags.includes("vite"))).slice(
+  0,
+  5
+);
 ```
 
-### `select`
-
-Return only some fields, eg for a list page that does not need each post's body:
+To read several collections together, eg for a sitemap, annotate the callback. TypeScript's `flatMap` cannot infer a union on its own:
 
 ```ts
-content.posts.findMany({ select: { slug: true, title: true } }); // { slug: string; title: string }[]
+import { content, type AnyDocument } from "tomekit/content";
+
+Object.values(content).flatMap(
+  (collection): readonly AnyDocument[] => collection.all
+);
 ```
 
-### `orderBy`
-
-One field, or several in priority order. Missing values sort last either way.
+Each collection is also its own module, so a file that needs one collection loads only that one:
 
 ```ts
-content.posts.findMany({ orderBy: [{ featured: "desc" }, { title: "asc" }] });
+import posts from "tomekit/content/posts";
 ```
 
 ## Collection options
@@ -196,7 +186,28 @@ const posts = defineCollection({
 });
 ```
 
-The return type of `transform` becomes the type your queries return. `findUnique({ where: { slug } })` keeps working even if your transform leaves `slug` out.
+The return type of `transform` becomes the type of `all` and `get`. `get(slug)` keeps working even if your transform leaves `slug` out. A transform cannot change `slug`; set it in the frontmatter instead.
+
+### Sharing a transform
+
+The second argument names the collection, so one function can serve several. Type the document as `BaseDocument` or a subtype to keep each schema's fields:
+
+```ts
+import type { BaseDocument, TransformContext } from "tomekit";
+
+function withUrl<T extends BaseDocument>(
+  { content, file, ...document }: T,
+  { collection }: TransformContext
+) {
+  return {
+    ...document,
+    html: marked.parse(content, { async: false }),
+    url: `/${collection}/${document.slug}`,
+  };
+}
+
+// collections: { posts: { ..., transform: withUrl }, notes: { ..., transform: withUrl } }
+```
 
 ### Skipping documents
 
@@ -221,7 +232,7 @@ tomekit also warns when:
 
 - a collection's `directory` does not exist, or no files in it match `include`
 - frontmatter uses `content` or `file`, which tomekit sets
-- `tomekit/content` is imported in the browser bundle, which would ship every document to the client
+- `tomekit/content` or a collection module is imported in the browser bundle, which would ship its documents to the client
 
 While the dev server runs, saving a file only re-runs that file's transform, and files that do not match a collection's `include` never trigger a reload.
 
