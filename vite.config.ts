@@ -17,7 +17,7 @@ export default defineConfig({
   },
   pack: {
     dts: true,
-    entry: ["src/index.ts", "src/vite.ts"],
+    entry: ["src/index.ts", "src/content.ts", "src/query.ts", "src/vite.ts"],
     platform: "node",
   },
 });

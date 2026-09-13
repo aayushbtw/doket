@@ -1,24 +1,33 @@
 import path from "node:path";
 
-import type { Plugin, ViteDevServer } from "vite";
+import type { Logger, Plugin, ViteDevServer } from "vite";
 import { runnerImport } from "vite";
 
+import { writeDeclaration } from "./dts";
 import type { Config } from "./index";
 import { loadCollection } from "./load";
 import { serialize } from "./serialize";
 
-const MODULE_ID = "virtual:tomekit";
+const MODULE_ID = "tomekit/content";
 const RESOLVED_ID = `\0${MODULE_ID}`;
 
 interface TomekitOptions {
   /** Path to the config file, relative to the Vite root. */
   config?: string;
+  /**
+   * Where to write the declaration that types `tomekit/content`, relative to
+   * the Vite root. It must be inside your tsconfig's `include`. `false` skips
+   * it, and you register the config's type yourself.
+   */
+  dts?: string | false;
 }
 
 function tomekit({
   config = "tomekit.config.ts",
+  dts = "tomekit-env.d.ts",
 }: TomekitOptions = {}): Plugin {
   let root = process.cwd();
+  let logger: Logger | undefined;
   let configPath = "";
   // Every environment that imports the module shares one load per change.
   let pending: Promise<string> | undefined;
@@ -38,22 +47,20 @@ function tomekit({
       ),
     ];
 
-    const exports = await Promise.all(
+    const entries = await Promise.all(
       collections.map(async (collection) => {
-        const entries = await loadCollection(collection, root);
-        const pairs = entries.map(
+        const loaded = await loadCollection(collection, root, (message) => {
+          logger?.warn(`[tomekit] ${message}`);
+        });
+        const pairs = loaded.map(
           ({ output, slug }) => `[${JSON.stringify(slug)},${serialize(output)}]`
         );
-        return `${JSON.stringify(collection.name)}:collection([${pairs.join(",")}])`;
+        return `${JSON.stringify(collection.name)}:createCollection([${pairs.join(",")}])`;
       })
     );
 
-    return `function collection(entries) {
-  const documents = entries.map((entry) => entry[1]);
-  const bySlug = new Map(entries);
-  return { all: () => documents, get: (slug) => bySlug.get(slug) };
-}
-export const collections = {${exports.join(",")}};
+    return `import { createCollection } from "tomekit/query";
+export const content = {${entries.join(",")}};
 `;
   }
 
@@ -69,9 +76,15 @@ export const collections = {${exports.join(",")}};
   }
 
   return {
-    configResolved(resolved) {
-      ({ root } = resolved);
+    async configResolved(resolved) {
+      ({ logger, root } = resolved);
       configPath = path.resolve(root, config);
+      if (dts !== false) {
+        const dtsPath = path.resolve(root, dts);
+        if (await writeDeclaration(configPath, dtsPath)) {
+          logger.info(`[tomekit] wrote ${path.relative(root, dtsPath)}`);
+        }
+      }
     },
 
     configureServer(server) {
@@ -86,6 +99,10 @@ export const collections = {${exports.join(",")}};
         }
       });
     },
+
+    // Ahead of Vite's own resolver, which would otherwise find the stub that
+    // `tomekit/content` ships for use without the plugin.
+    enforce: "pre",
 
     async load(id) {
       if (id !== RESOLVED_ID) {

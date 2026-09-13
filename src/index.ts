@@ -1,3 +1,5 @@
+import type { CollectionQuery } from "./query";
+
 // The subset of Standard Schema v1 (https://standardschema.dev) the engine
 // reads, so any validator that implements it works, not only Zod.
 interface StandardSchema<TOutput = unknown> {
@@ -24,53 +26,104 @@ type StandardResult<TOutput> =
 type InferOutput<TSchema> =
   TSchema extends StandardSchema<infer TOutput> ? TOutput : never;
 
-interface Meta {
-  /** The file name with its extension, eg `my-post.md`. */
-  fileName: string;
-  /** Relative to the project root. */
-  filePath: string;
-  /** Relative to the collection directory, without the extension. */
-  slug: string;
+interface FileInfo {
+  /** The file name with its extension, eg `setup.md`. */
+  name: string;
+  /** Relative to the project root, eg `content/guides/setup.md`. */
+  path: string;
 }
 
-type Document<TSchema> = InferOutput<TSchema> & {
+type Document<TSchema> = Omit<
+  InferOutput<TSchema>,
+  "content" | "file" | "slug"
+> & {
   /** The file's body, after the frontmatter block. */
   content: string;
-  _meta: Meta;
+  file: FileInfo;
+  /**
+   * The frontmatter `slug` when it is a string, otherwise the path inside the
+   * collection directory without the extension, eg `guides/setup`.
+   */
+  slug: string;
 };
+
+/** Returned from `transform` to leave a document out of its collection. */
+class Skipped {
+  // A private field, so no plain output object matches this type by shape.
+  readonly #reason: string | undefined;
+
+  constructor(reason?: string) {
+    this.#reason = reason;
+  }
+
+  get reason(): string | undefined {
+    return this.#reason;
+  }
+}
+
+interface TransformContext {
+  /** Leaves this document out of the collection, eg a draft. */
+  skip: (reason?: string) => Skipped;
+}
 
 interface Collection<
   TName extends string = string,
   TSchema extends StandardSchema = StandardSchema,
   TOutput = unknown,
 > {
+  /** Relative to the project root. */
   directory: string;
-  include: string;
+  /** Glob patterns relative to `directory` to leave out. */
+  exclude?: string | readonly string[];
+  /** Glob patterns relative to `directory`. */
+  include: string | readonly string[];
+  /** The key the collection is read by, eg `content.posts`. */
   name: TName;
   schema: TSchema;
-  transform?: (document: Document<TSchema>) => TOutput | Promise<TOutput>;
+  transform?: (
+    document: Document<TSchema>,
+    context: TransformContext
+  ) => TOutput | Promise<TOutput>;
 }
 
-interface Config<TCollections extends readonly Collection[] = Collection[]> {
+interface Config<
+  TCollections extends readonly Collection[] = readonly Collection[],
+> {
   collections: TCollections;
 }
 
-interface CollectionApi<TOutput> {
-  /** Every document, in file name order. */
-  all: () => TOutput[];
-  get: (slug: string) => TOutput | undefined;
-}
+/**
+ * Augment this with your config's type to type `tomekit/content`:
+ *
+ * ```ts
+ * declare module "tomekit" {
+ *   interface Register {
+ *     config: typeof config;
+ *   }
+ * }
+ * ```
+ */
+// Empty on purpose: it only exists to be augmented.
+// oxlint-disable-next-line typescript/no-empty-object-type, typescript/no-empty-interface
+interface Register {}
 
-type Collections<TConfig extends Config> = {
+type RegisteredConfig = Register extends {
+  config: infer TConfig extends Config;
+}
+  ? TConfig
+  : Config;
+
+type Output<TCollection> =
+  TCollection extends Collection<string, infer TSchema, infer TOutput>
+    ? unknown extends TOutput
+      ? Document<TSchema>
+      : Exclude<TOutput, Skipped>
+    : never;
+
+type Content<TConfig extends Config = RegisteredConfig> = {
   [
     TCollection in TConfig["collections"][number] as TCollection["name"]
-  ]: CollectionApi<
-    TCollection extends Collection<string, infer TSchema, infer TOutput>
-      ? unknown extends TOutput
-        ? Document<TSchema>
-        : TOutput
-      : never
-  >;
+  ]: CollectionQuery<Output<TCollection>>;
 };
 
 function defineCollection<
@@ -91,12 +144,16 @@ function defineConfig<const TCollections extends readonly Collection[]>(
 
 export {
   type Collection,
-  type CollectionApi,
-  type Collections,
+  type Content,
   type Config,
   defineCollection,
   defineConfig,
   type Document,
-  type Meta,
+  type FileInfo,
+  type Register,
+  Skipped,
   type StandardSchema,
+  type TransformContext,
 };
+
+export type { CollectionQuery, FindManyArgs, OrderBy, Where } from "./query";

@@ -30,5 +30,6 @@ async function writeFiles(root: string, files: Record<string, string>) {
 }
 
 const SOURCE = path.join(import.meta.dirname, "..", "src", "index.ts");
+const QUERY = path.join(import.meta.dirname, "..", "src", "query.ts");
 
-export { createProject, SOURCE };
+export { createProject, QUERY, SOURCE };

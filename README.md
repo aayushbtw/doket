@@ -5,10 +5,10 @@ Typed content collections for Vite. Parsed at build, nothing at runtime.
 Point tomekit at a folder of Markdown files and a schema. At build time it reads every file, validates its frontmatter, runs your transform, and hands the result to your app as plain data. Your server never parses a file, so it works the same on Node, Cloudflare Workers, or anything else without a filesystem.
 
 ```ts
-import { collections } from "virtual:tomekit";
+import { content } from "tomekit/content";
 
-collections.posts.all(); // every post, typed from your schema
-collections.posts.get("hello-world"); // one post, or undefined
+content.posts.findMany({ orderBy: { publishedAt: "desc" }, take: 5 });
+content.posts.findUnique({ slug: "hello-world" });
 ```
 
 ## Why tomekit
@@ -17,7 +17,7 @@ collections.posts.get("hello-world"); // one post, or undefined
 - **It ships data, not a parser.** Frontmatter is parsed and validated during the build, so a typo fails the build, not a request.
 - **It does not render Markdown.** Your transform gets the raw body and you parse it with whatever you already use. That is also why tomekit has one dependency.
 - **It works with any validator.** Schemas use [Standard Schema](https://standardschema.dev), so Zod, Valibot and ArkType all work.
-- **It has no codegen.** Types come straight from your config.
+- **It has no generated folder.** Types come straight from your config, through one small file that is written once and committed.
 
 ## Install
 
@@ -59,39 +59,85 @@ export default defineConfig({
 });
 ```
 
-**3. Type the virtual module.** Add a path alias for the config to `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "paths": { "tomekit.config": ["./tomekit.config.ts"] }
-  }
-}
-```
-
-Then declare the module in any `.d.ts` file, eg `src/tomekit.d.ts`:
+**3. Query your content** anywhere in your app:
 
 ```ts
-declare module "virtual:tomekit" {
-  import type config from "tomekit.config";
-  import type { Collections } from "tomekit";
+import { content } from "tomekit/content";
 
-  export const collections: Collections<typeof config>;
-}
+const post = content.posts.findUnique({ slug });
 ```
+
+That's the whole setup. The first time Vite runs, the plugin writes `tomekit-env.d.ts` next to your config, which is what types `tomekit/content`. Commit it: it only changes if your config file moves. Importing `tomekit/content` without the plugin throws an error that says so.
+
+## Queries
+
+Every collection has the same four methods. They run in memory on data built ahead of time, so they are synchronous.
+
+```ts
+content.posts.findMany(); // every post, in file name order
+
+content.posts.findMany({
+  where: { draft: false, tags: { has: "vite" } },
+  orderBy: { publishedAt: "desc" },
+  skip: 10,
+  take: 5,
+});
+
+content.posts.findFirst({ orderBy: { publishedAt: "desc" } }); // Post | undefined
+content.posts.findUnique({ slug: "hello-world" }); // Post | undefined
+content.posts.count({ where: { draft: false } }); // number
+```
+
+### `where`
+
+A plain value matches by equality, and Dates compare by time. For anything else, use an operator:
+
+| Operator | Applies to | Matches when the field |
+| --- | --- | --- |
+| `equals`, `not` | any | is, or is not, the value |
+| `in`, `notIn` | any | is, or is not, one of the values |
+| `has` | arrays | contains the value |
+| `contains`, `startsWith`, `endsWith` | strings | contains, starts with, or ends with the text |
+| `gt`, `gte`, `lt`, `lte` | numbers, strings, Dates | is greater or less than the value |
+
+Several fields or operators must all match. Wrap a filter in `NOT` to invert it. For anything the operators cannot express, pass a function:
+
+```ts
+content.posts.findMany({ where: { NOT: { tags: { has: "draft" } } } });
+content.posts.findMany({ where: (post) => post.tags.length > 2 });
+```
+
+### `orderBy`
+
+One field, or several in priority order. Missing values sort last either way.
+
+```ts
+content.posts.findMany({ orderBy: [{ featured: "desc" }, { title: "asc" }] });
+```
+
+## Collection options
+
+| Option | Required |  |
+| --- | --- | --- |
+| `name` | yes | The key you query the collection by, eg `content.posts` |
+| `directory` | yes | Where the files live, relative to the project root |
+| `include` | yes | A glob or globs relative to `directory`, eg `"**/*.md"` |
+| `exclude` | no | A glob or globs relative to `directory` to leave out |
+| `schema` | yes | Any [Standard Schema](https://standardschema.dev) for the frontmatter |
+| `transform` | no | Shapes each document at build time, see [Transform](#transform) |
 
 ## Documents
 
-Without a transform, each document is your validated frontmatter plus two fields:
+Without a transform, each document is your validated frontmatter plus three fields:
 
 | Field | Value |
 | --- | --- |
+| `slug` | The frontmatter `slug` if it has one, otherwise the path inside the collection directory without the extension, eg `guides/setup` |
 | `content` | The file's body, after the frontmatter block |
-| `_meta.slug` | The path inside the collection directory, without the extension, eg `guides/setup` |
-| `_meta.fileName` | The file name with its extension, eg `setup.md` |
-| `_meta.filePath` | The path relative to the project root |
+| `file.name` | The file name with its extension, eg `setup.md` |
+| `file.path` | The path relative to the project root |
 
-A file without frontmatter is validated as an empty object.
+A file without frontmatter is validated as an empty object. Frontmatter named `content` or `file` is ignored with a warning, since tomekit sets those.
 
 ## Transform
 
@@ -105,15 +151,24 @@ const posts = defineCollection({
   directory: "content/posts",
   include: "**/*.md",
   schema: z.object({ title: z.string() }),
-  transform: ({ _meta, content, title }) => ({
+  transform: ({ content, slug, title }) => ({
     title,
     html: marked.parse(content, { async: false }),
-    url: `/posts/${_meta.slug}`,
+    url: `/posts/${slug}`,
   }),
 });
 ```
 
-The return type of `transform` becomes the type of `collections.posts.all()`.
+The return type of `transform` becomes the type your queries return. `findUnique({ slug })` keeps working even if your transform leaves `slug` out.
+
+### Skipping documents
+
+Return `skip()` from the transform to leave a document out, eg drafts:
+
+```ts
+transform: (document, { skip }) =>
+  document.draft ? skip("draft") : document,
+```
 
 ## Errors
 
@@ -128,12 +183,27 @@ In dev, fix the file and tomekit reloads.
 ## Options
 
 ```ts
-tomekit({ config: "tomekit.config.ts" });
+tomekit({ config: "tomekit.config.ts", dts: "tomekit-env.d.ts" });
 ```
 
 | Option | Default |  |
 | --- | --- | --- |
 | `config` | `"tomekit.config.ts"` | Path to the config file, relative to the Vite root |
+| `dts` | `"tomekit-env.d.ts"` | Where to write the file that types `tomekit/content`, or `false` to skip it |
+
+If your tsconfig only includes some folders, eg `"include": ["src"]`, set `dts` to a path inside them, eg `"src/tomekit-env.d.ts"`. Otherwise TypeScript never sees the file and `content` is untyped.
+
+tomekit never overwrites the file once you edit it. To register the type yourself, set `dts: false` and add this anywhere TypeScript sees:
+
+```ts
+import type config from "./tomekit.config";
+
+declare module "tomekit" {
+  interface Register {
+    config: typeof config;
+  }
+}
+```
 
 ## Not in scope
 
