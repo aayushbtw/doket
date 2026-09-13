@@ -7,15 +7,17 @@ import type { Config } from "./index";
 import { loadCollection } from "./load";
 import { serialize } from "./serialize";
 
-const MODULE_ID = "virtual:doket";
+const MODULE_ID = "virtual:tomekit";
 const RESOLVED_ID = `\0${MODULE_ID}`;
 
-interface DoketOptions {
+interface TomekitOptions {
   /** Path to the config file, relative to the Vite root. */
   config?: string;
 }
 
-function doket({ config = "doket.config.ts" }: DoketOptions = {}): Plugin {
+function tomekit({
+  config = "tomekit.config.ts",
+}: TomekitOptions = {}): Plugin {
   let root = process.cwd();
   let configPath = "";
   // Every environment that imports the module shares one load per change.
@@ -102,7 +104,7 @@ export const collections = {${exports.join(",")}};
       }
     },
 
-    name: "doket",
+    name: "tomekit",
 
     resolveId(id) {
       return id === MODULE_ID ? RESOLVED_ID : undefined;
@@ -110,4 +112,4 @@ export const collections = {${exports.join(",")}};
   };
 }
 
-export { doket, type DoketOptions };
+export { tomekit, type TomekitOptions };

@@ -4,7 +4,7 @@ import { createServer } from "vite";
 import type { ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { doket } from "../src/vite";
+import { tomekit } from "../src/vite";
 import { createProject, SOURCE } from "./project";
 
 const config = `
@@ -36,9 +36,9 @@ function hasCollections(module: object): module is Posts {
 }
 
 async function loadCollections(dev: ViteDevServer) {
-  const module = await dev.ssrLoadModule("virtual:doket");
+  const module = await dev.ssrLoadModule("virtual:tomekit");
   if (!hasCollections(module)) {
-    throw new Error("virtual:doket has no collections export");
+    throw new Error("virtual:tomekit has no collections export");
   }
   return module.collections;
 }
@@ -52,20 +52,23 @@ afterEach(async () => {
 });
 
 async function start(files: Record<string, string>) {
-  const project = await createProject({ "doket.config.ts": config, ...files });
+  const project = await createProject({
+    "tomekit.config.ts": config,
+    ...files,
+  });
   ({ cleanup } = project);
   server = await createServer({
     configFile: false,
     logLevel: "silent",
-    plugins: [doket()],
+    plugins: [tomekit()],
     root: project.root,
     server: { hmr: false, middlewareMode: true },
   });
   return { project, server };
 }
 
-describe("doket()", () => {
-  it("serves every collection from virtual:doket", async () => {
+describe("tomekit()", () => {
+  it("serves every collection from virtual:tomekit", async () => {
     const { server: dev } = await start({
       "content/posts/hello.md": "---\ntitle: Hello\ndate: 2026-03-27\n---\n",
     });
@@ -82,7 +85,7 @@ describe("doket()", () => {
     const { project, server: dev } = await start({
       "content/posts/hello.md": "---\ntitle: Hello\ndate: 2026-03-27\n---\n",
     });
-    await dev.ssrLoadModule("virtual:doket");
+    await dev.ssrLoadModule("virtual:tomekit");
 
     await project.write({
       "content/posts/later.md": "---\ntitle: Later\ndate: 2026-04-01\n---\n",

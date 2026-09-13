@@ -1,5 +1,5 @@
 {
-  "name": "doket",
+  "name": "tomekit",
   "version": "0.1.0",
   "description": "Typed content collections for Vite. Parsed at build, nothing at runtime.",
   "keywords": [
@@ -11,13 +11,13 @@
     "vite",
     "vite-plugin"
   ],
-  "homepage": "https://github.com/aayushbtw/doket#readme",
-  "bugs": "https://github.com/aayushbtw/doket/issues",
+  "homepage": "https://github.com/aayushbtw/tomekit#readme",
+  "bugs": "https://github.com/aayushbtw/tomekit/issues",
   "license": "MIT",
   "author": "Aayush",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aayushbtw/doket.git"
+    "url": "git+https://github.com/aayushbtw/tomekit.git"
   },
   "files": [
     "dist"

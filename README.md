@@ -1,38 +1,38 @@
-# doket
+# tomekit
 
 Typed content collections for Vite. Parsed at build, nothing at runtime.
 
-Point doket at a folder of Markdown files and a schema. At build time it reads every file, validates its frontmatter, runs your transform, and hands the result to your app as plain data. Your server never parses a file, so it works the same on Node, Cloudflare Workers, or anything else without a filesystem.
+Point tomekit at a folder of Markdown files and a schema. At build time it reads every file, validates its frontmatter, runs your transform, and hands the result to your app as plain data. Your server never parses a file, so it works the same on Node, Cloudflare Workers, or anything else without a filesystem.
 
 ```ts
-import { collections } from "virtual:doket";
+import { collections } from "virtual:tomekit";
 
 collections.posts.all(); // every post, typed from your schema
 collections.posts.get("hello-world"); // one post, or undefined
 ```
 
-## Why doket
+## Why tomekit
 
 - **It is only a Vite plugin.** There is no separate CLI, watcher process, or generated folder. Content reloads with the rest of your dev server.
 - **It ships data, not a parser.** Frontmatter is parsed and validated during the build, so a typo fails the build, not a request.
-- **It does not render Markdown.** Your transform gets the raw body and you parse it with whatever you already use. That is also why doket has one dependency.
+- **It does not render Markdown.** Your transform gets the raw body and you parse it with whatever you already use. That is also why tomekit has one dependency.
 - **It works with any validator.** Schemas use [Standard Schema](https://standardschema.dev), so Zod, Valibot and ArkType all work.
 - **It has no codegen.** Types come straight from your config.
 
 ## Install
 
 ```sh
-pnpm add doket
+pnpm add tomekit
 ```
 
 Requires Node 22.17 or later and Vite 6.4 or later.
 
 ## Setup
 
-**1. Define your collections** in `doket.config.ts` at the project root:
+**1. Define your collections** in `tomekit.config.ts` at the project root:
 
 ```ts
-import { defineCollection, defineConfig } from "doket";
+import { defineCollection, defineConfig } from "tomekit";
 import { z } from "zod";
 
 const posts = defineCollection({
@@ -51,11 +51,11 @@ export default defineConfig({ collections: [posts] });
 **2. Add the plugin** to `vite.config.ts`:
 
 ```ts
-import { doket } from "doket/vite";
+import { tomekit } from "tomekit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [doket()],
+  plugins: [tomekit()],
 });
 ```
 
@@ -64,17 +64,17 @@ export default defineConfig({
 ```json
 {
   "compilerOptions": {
-    "paths": { "doket.config": ["./doket.config.ts"] }
+    "paths": { "tomekit.config": ["./tomekit.config.ts"] }
   }
 }
 ```
 
-Then declare the module in any `.d.ts` file, eg `src/doket.d.ts`:
+Then declare the module in any `.d.ts` file, eg `src/tomekit.d.ts`:
 
 ```ts
-declare module "virtual:doket" {
-  import type config from "doket.config";
-  import type { Collections } from "doket";
+declare module "virtual:tomekit" {
+  import type config from "tomekit.config";
+  import type { Collections } from "tomekit";
 
   export const collections: Collections<typeof config>;
 }
@@ -123,21 +123,21 @@ A file that fails validation fails the build, and the message names the file and
 content/posts/hello.md: title: Invalid input: expected string, received undefined
 ```
 
-In dev, fix the file and doket reloads.
+In dev, fix the file and tomekit reloads.
 
 ## Options
 
 ```ts
-doket({ config: "doket.config.ts" });
+tomekit({ config: "tomekit.config.ts" });
 ```
 
 | Option | Default |  |
 | --- | --- | --- |
-| `config` | `"doket.config.ts"` | Path to the config file, relative to the Vite root |
+| `config` | `"tomekit.config.ts"` | Path to the config file, relative to the Vite root |
 
 ## Not in scope
 
-doket stays small on purpose. It does not render MDX, process images, or resolve references between collections. Those belong in your transform or in a tool built for them.
+tomekit stays small on purpose. It does not render MDX, process images, or resolve references between collections. Those belong in your transform or in a tool built for them.
 
 ## License
 
