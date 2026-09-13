@@ -188,6 +188,36 @@ describe("loadCollection", () => {
     expect(outputs(entries)).toStrictEqual([{ title: "Live" }]);
   });
 
+  it("passes the collection name to the transform", async () => {
+    const root = await project({
+      "content/posts/hello.md": "---\ntitle: Hello\n---\n",
+    });
+    const withUrl = defineCollection({
+      ...posts,
+      transform: ({ slug }, { collection }) => ({
+        url: `/${collection}/${slug}`,
+      }),
+    });
+
+    const entries = await loadCollection("posts", withUrl, root);
+
+    expect(outputs(entries)).toStrictEqual([{ url: "/posts/hello" }]);
+  });
+
+  it("fails when the transform changes the slug", async () => {
+    const root = await project({
+      "content/posts/hello.md": "---\ntitle: Hello\n---\n",
+    });
+    const renamed = defineCollection({
+      ...posts,
+      transform: (document) => ({ ...document, slug: "other" }),
+    });
+
+    await expect(loadCollection("posts", renamed, root)).rejects.toThrow(
+      'content/posts/hello.md: transform changed slug "hello" to "other"'
+    );
+  });
+
   it("names the file and field when validation fails", async () => {
     const root = await project({
       "content/posts/broken.md": "---\ntags: []\n---\n",

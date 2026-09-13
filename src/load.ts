@@ -5,7 +5,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 import { Skipped } from "./index";
-import type { Collection, Document } from "./index";
+import type { CollectionConfig, Document } from "./index";
 
 const FRONTMATTER = /^---\r?\n(?:(?<data>[\s\S]*?)\r?\n)?---(?:\r?\n|$)/u;
 const EXTENSION = /\.[^./]+$/u;
@@ -37,16 +37,16 @@ function skip(reason?: string): Skipped {
   return new Skipped(reason);
 }
 
-function includePatterns(collection: Collection): string[] {
+function includePatterns(collection: CollectionConfig): string[] {
   return [collection.include ?? DEFAULT_INCLUDE].flat();
 }
 
-function excludePatterns(collection: Collection): string[] {
+function excludePatterns(collection: CollectionConfig): string[] {
   return collection.exclude === undefined ? [] : [collection.exclude].flat();
 }
 
 /** Whether a path relative to the collection directory belongs to it. */
-function inCollection(collection: Collection, file: string): boolean {
+function inCollection(collection: CollectionConfig, file: string): boolean {
   const posix = file.split(path.sep).join("/");
   return (
     includePatterns(collection).some((pattern) =>
@@ -70,7 +70,7 @@ async function isDirectory(directory: string): Promise<boolean> {
 /** Every kept document, in file name order. */
 async function loadCollection(
   name: string,
-  collection: Collection,
+  collection: CollectionConfig,
   root: string,
   { cache, onError, warn = console.warn }: LoadOptions = {}
 ): Promise<Entry[]> {
@@ -98,7 +98,7 @@ async function loadCollection(
     files.map(async (file) => {
       const filePath = path.relative(root, path.join(directory, file));
       try {
-        return await loadFile(collection, directory, file, filePath, {
+        return await loadFile(name, collection, directory, file, filePath, {
           cache,
           warn,
         });
@@ -155,7 +155,8 @@ function withoutDuplicates(
 }
 
 async function loadFile(
-  collection: Collection,
+  name: string,
+  collection: CollectionConfig,
   directory: string,
   file: string,
   filePath: string,
@@ -176,20 +177,30 @@ async function loadFile(
     warn
   );
   const output = collection.transform
-    ? await collection.transform(document, { skip })
+    ? await collection.transform(document, { collection: name, skip })
     : document;
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    "slug" in output &&
+    output.slug !== document.slug
+  ) {
+    throw new Error(
+      `transform changed slug "${document.slug}" to ${JSON.stringify(output.slug)}. Set \`slug\` in the frontmatter instead, so lookups and types agree.`
+    );
+  }
   const entry = { filePath, output, slug: document.slug };
   cache?.set(file, { entry, hash: sourceHash });
   return entry;
 }
 
 async function parseDocument(
-  collection: Collection,
+  collection: CollectionConfig,
   source: string,
   file: string,
   filePath: string,
   warn: (message: string) => void
-): Promise<Document<Collection["schema"]>> {
+): Promise<Document<CollectionConfig["schema"]>> {
   const match = FRONTMATTER.exec(source);
   const frontmatter = match?.groups?.data;
   const data: unknown =

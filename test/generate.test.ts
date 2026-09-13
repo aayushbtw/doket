@@ -56,9 +56,12 @@ describe("writeTypes", () => {
     expect(await readFile(path.join(content, "notes.d.ts"), "utf-8")).toContain(
       "export type NotesSlug = never;"
     );
-    expect(await readFile(path.join(content, "index.d.ts"), "utf-8")).toContain(
-      '"posts": CollectionQuery<Posts, PostsSlug>;'
+    expect(posts).toContain(
+      "declare const collection: Collection<Posts, PostsSlug>;"
     );
+    const index = await readFile(path.join(content, "index.d.ts"), "utf-8");
+    expect(index).toContain('"posts": typeof import("./posts").default;');
+    expect(index).toContain("export type AnyDocument = Posts | Notes;");
   });
 
   it("reports no change when nothing differs, and removes dropped collections", async () => {

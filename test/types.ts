@@ -2,7 +2,12 @@
 import { z } from "zod";
 
 import { defineCollection, defineConfig } from "../src/index";
-import type { CollectionQuery, Content } from "../src/index";
+import type {
+  BaseDocument,
+  Collection,
+  Content,
+  TransformContext,
+} from "../src/index";
 
 const config = defineConfig({
   collections: {
@@ -28,54 +33,53 @@ const config = defineConfig({
 
 declare const content: Content<typeof config>;
 
-export const title: string | undefined = content.posts.findFirst()?.title;
-export const slug: string | undefined = content.notes.findFirst()?.slug;
-export const file: string | undefined = content.notes.findFirst()?.file.path;
-export const count: number = content.notes.count({
-  where: { order: { gte: 1 } },
-});
+export const title: string | undefined = content.posts.all[0]?.title;
+export const slug: string | undefined = content.notes.get("a")?.slug;
+export const file: string | undefined = content.notes.all[0]?.file.path;
+export const slugs: readonly string[] = content.notes.slugs;
 
-content.posts.findMany({
-  orderBy: [{ date: "desc" }, { title: "asc" }],
-  skip: 1,
-  take: 5,
-  where: {
-    NOT: { title: { contains: "draft" } },
-    date: { lt: new Date() },
-    tags: { has: "vite" },
-  },
-});
-content.posts.findMany({ where: (post) => post.tags.length > 0 });
-
-const [picked] = content.posts.findMany({ select: { title: true } });
-export const pickedTitle: string | undefined = picked?.title;
-// @ts-expect-error unselected fields are not returned
-export type Unpicked = NonNullable<typeof picked>["date"];
-
-export const unique: string | undefined = content.posts.findUnique({
-  where: { slug: "a" },
-})?.title;
+const tagged = content.posts.all.find(
+  (post): post is typeof post & { tags: [string, ...string[]] } =>
+    post.tags.length > 0
+);
+export const firstTag: string | undefined = tagged?.tags[0];
 
 // @ts-expect-error a skipped document is never part of the output
-export const skipped: "skipped" = content.posts.findMany()[0];
+export const skipped: "skipped" = content.posts.all[0];
 
 // @ts-expect-error unknown fields are rejected
-content.posts.findMany({ where: { author: "me" } });
+export type Author = (typeof content.posts.all)[number]["author"];
 
-// @ts-expect-error `has` only applies to arrays
-content.notes.findMany({ where: { order: { has: 1 } } });
-
-// @ts-expect-error `contains` only applies to strings
-content.notes.findMany({ where: { order: { contains: "1" } } });
+// @ts-expect-error documents cannot be mutated through `all`
+export type Push = (typeof content.posts.all)["push"];
 
 // @ts-expect-error collections not in the config do not exist
 export type Drafts = (typeof content)["drafts"];
 
-// A generic helper that passes no `select` gets its own document type back.
+// Collections with different documents can still be read together.
+type AnyDocument =
+  | (typeof content.notes.all)[number]
+  | (typeof content.posts.all)[number];
+export const everyDocument: AnyDocument[] = Object.values(content).flatMap(
+  (collection): readonly AnyDocument[] => collection.all
+);
+
+// A generic helper takes any collection whose documents fit.
 export function titles<TDocument extends { title: string }>(
-  collection: CollectionQuery<TDocument>
+  collection: Collection<TDocument>
 ): string[] {
-  return collection.findMany().map((document) => document.title);
+  return collection.all.map((document) => document.title);
+}
+
+declare const slugged: Collection<{ title: string }, "a" | "b">;
+export const sluggedTitles: string[] = titles(slugged);
+
+// One transform shared by several collections keeps each schema's fields.
+function withUrl<TDocument extends BaseDocument>(
+  { content: _content, file: _file, ...document }: TDocument,
+  { collection }: TransformContext
+) {
+  return { ...document, url: `/${collection}/${document.slug}` };
 }
 
 const inline = defineConfig({
@@ -88,6 +92,14 @@ const inline = defineConfig({
         return document.title === "" ? skip() : { heading: document.title };
       },
     },
+    named: {
+      directory: "content/named",
+      schema: z.object({ order: z.number() }),
+      transform: (_document, { collection }) => {
+        const name: "named" = collection;
+        return { name };
+      },
+    },
     notes: defineCollection({
       directory: "content/notes",
       schema: z.object({ order: z.number() }),
@@ -96,18 +108,24 @@ const inline = defineConfig({
       directory: "content/pages",
       schema: z.object({ order: z.number() }),
     },
+    shared: {
+      directory: "content/shared",
+      schema: z.object({ order: z.number() }),
+      transform: withUrl,
+    },
   },
 });
 
 declare const inlineContent: Content<typeof inline>;
 
-export const heading: string | undefined =
-  inlineContent.drafts.findFirst()?.heading;
-export const pageOrder: number | undefined =
-  inlineContent.pages.findFirst()?.order;
-export const noteSlug: string | undefined =
-  inlineContent.notes.findFirst()?.slug;
+export const heading: string | undefined = inlineContent.drafts.all[0]?.heading;
+export const pageOrder: number | undefined = inlineContent.pages.all[0]?.order;
+export const noteSlug: string | undefined = inlineContent.notes.all[0]?.slug;
 
-const draft = inlineContent.drafts.findFirst();
+const [draft] = inlineContent.drafts.all;
 // @ts-expect-error a transform's output replaces the document
 export type DraftTitle = NonNullable<typeof draft>["title"];
+
+export const sharedUrl: string | undefined = inlineContent.shared.all[0]?.url;
+export const sharedOrder: number | undefined =
+  inlineContent.shared.all[0]?.order;

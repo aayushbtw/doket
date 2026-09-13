@@ -12,6 +12,11 @@ import { serialize } from "./serialize";
 const MODULE_ID = "tomekit/content";
 const RESOLVED_ID = `\0${MODULE_ID}`;
 
+interface Modules {
+  collections: Map<string, string>;
+  index: string;
+}
+
 interface TomekitOptions {
   /** Path to the config file, relative to the Vite root. */
   config?: string;
@@ -37,7 +42,7 @@ function tomekit({
   let current: Config | undefined;
   const caches = new Map<string, FileCache>();
   // Every environment that imports the module shares one build per change.
-  let pending: Promise<string> | undefined;
+  let pending: Promise<Modules> | undefined;
 
   async function importConfig(): Promise<Config> {
     const result = await runnerImport<{ default: Config }>(configPath, {
@@ -49,7 +54,7 @@ function tomekit({
     return result.module.default;
   }
 
-  async function build() {
+  async function build(): Promise<Modules> {
     loadedConfig ??= importConfig();
     current = await loadedConfig.catch((error: unknown) => {
       loadedConfig = undefined;
@@ -72,7 +77,9 @@ function tomekit({
           ({ output, slug }) => `[${JSON.stringify(slug)},${serialize(output)}]`
         );
         return {
-          code: `${JSON.stringify(name)}:createCollection([${pairs.join(",")}])`,
+          code: `import { createCollection } from "tomekit/query";
+export default createCollection([${pairs.join(",")}]);
+`,
           name,
           slugs: entries.map((entry) => entry.slug),
         };
@@ -88,9 +95,19 @@ function tomekit({
       }
     }
 
-    return `import { createCollection } from "tomekit/query";
-export const content = {${collections.map((collection) => collection.code).join(",")}};
-`;
+    const imports = collections.map(
+      ({ name }, index) =>
+        `import c${index} from ${JSON.stringify(`${MODULE_ID}/${name}`)};`
+    );
+    const keys = collections.map(
+      ({ name }, index) => `${JSON.stringify(name)}:c${index}`
+    );
+    return {
+      collections: new Map(collections.map(({ code, name }) => [name, code])),
+      index: `${imports.join("\n")}
+export const content = {${keys.join(",")}};
+`,
+    };
   }
 
   /** What a changed file invalidates, if anything. */
@@ -121,9 +138,13 @@ export const content = {${collections.map((collection) => collection.code).join(
     }
     pending = undefined;
     for (const environment of Object.values(server.environments)) {
-      const module = environment.moduleGraph.getModuleById(RESOLVED_ID);
-      if (module) {
+      const modules = [...environment.moduleGraph.idToModuleMap]
+        .filter(([id]) => id.startsWith(RESOLVED_ID))
+        .map(([, module]) => module);
+      for (const module of modules) {
         environment.moduleGraph.invalidateModule(module);
+      }
+      if (modules.length > 0) {
         environment.hot.send({ type: "full-reload" });
       }
     }
@@ -167,17 +188,32 @@ export const content = {${collections.map((collection) => collection.code).join(
     enforce: "pre",
 
     async load(id) {
-      if (id !== RESOLVED_ID) {
+      if (!id.startsWith(RESOLVED_ID)) {
         return null;
       }
+      const moduleId = id.slice(1);
       if (this.environment.name === "client") {
         logger?.warn(
-          `[tomekit] ${MODULE_ID} was imported in the browser bundle, so every document ships to the client. Import it from server code only.`
+          `[tomekit] ${moduleId} was imported in the browser bundle, so its documents ship to the client. Import it from server code only.`
         );
       }
       pending ??= build();
       try {
-        return await pending;
+        const modules = await pending;
+        if (id === RESOLVED_ID) {
+          return modules.index;
+        }
+        const name = id.slice(RESOLVED_ID.length + 1);
+        const code = modules.collections.get(name);
+        if (code === undefined) {
+          const known = [...modules.collections.keys()]
+            .map((key) => JSON.stringify(key))
+            .join(", ");
+          throw new Error(
+            `[tomekit] ${moduleId} does not exist. Collections in the config: ${known || "none"}.`
+          );
+        }
+        return code;
       } catch (error) {
         pending = undefined;
         throw error;
@@ -195,7 +231,9 @@ export const content = {${collections.map((collection) => collection.code).join(
     name: "tomekit",
 
     resolveId(id) {
-      return id === MODULE_ID ? RESOLVED_ID : undefined;
+      return id === MODULE_ID || id.startsWith(`${MODULE_ID}/`)
+        ? `\0${id}`
+        : undefined;
     },
   };
 }

@@ -1,4 +1,4 @@
-import type { CollectionQuery, Simplify } from "./query";
+import type { Collection, Simplify } from "./query";
 
 // The subset of Standard Schema v1 (https://standardschema.dev) the engine
 // reads, so any validator that implements it works, not only Zod.
@@ -33,17 +33,20 @@ interface FileInfo {
   path: string;
 }
 
+/** The fields tomekit adds to every document, whatever its schema. */
+interface BaseDocument {
+  /** The file's body, after the frontmatter block. */
+  content: string;
+  file: FileInfo;
+  /**
+   * The frontmatter `slug` when it is a string, otherwise the path inside the
+   * collection directory without the extension, eg `guides/setup`.
+   */
+  slug: string;
+}
+
 type Document<TSchema> = Simplify<
-  Omit<InferOutput<TSchema>, "content" | "file" | "slug"> & {
-    /** The file's body, after the frontmatter block. */
-    content: string;
-    file: FileInfo;
-    /**
-     * The frontmatter `slug` when it is a string, otherwise the path inside the
-     * collection directory without the extension, eg `guides/setup`.
-     */
-    slug: string;
-  }
+  Omit<InferOutput<TSchema>, keyof BaseDocument> & BaseDocument
 >;
 
 /** Returned from `transform` to leave a document out of its collection. */
@@ -60,12 +63,14 @@ class Skipped {
   }
 }
 
-interface TransformContext {
+interface TransformContext<TName extends string = string> {
+  /** The collection's key in the config, eg `posts`. */
+  collection: TName;
   /** Leaves this document out of the collection, eg a draft. */
   skip: (reason?: string) => Skipped;
 }
 
-interface Collection<
+interface CollectionConfig<
   TSchema extends StandardSchema = StandardSchema,
   TOutput = unknown,
 > {
@@ -83,7 +88,10 @@ interface Collection<
 }
 
 interface Config<
-  TCollections extends Record<string, Collection> = Record<string, Collection>,
+  TCollections extends Record<string, CollectionConfig> = Record<
+    string,
+    CollectionConfig
+  >,
 > {
   /** Keyed by the name you query them by, eg `posts` for `content.posts`. */
   collections: TCollections;
@@ -91,16 +99,23 @@ interface Config<
 
 type SimplifyEach<TValue> = TValue extends object ? Simplify<TValue> : TValue;
 
-/** The type a collection's queries return, eg `InferDocument<typeof posts>`. */
+/** The type of a collection's documents, eg `InferDocument<typeof posts>`. */
 type InferDocument<TCollection> =
-  TCollection extends Collection<infer TSchema, infer TOutput>
+  TCollection extends CollectionConfig<infer TSchema, infer TOutput>
     ? unknown extends TOutput
       ? Document<TSchema>
       : SimplifyEach<Exclude<TOutput, Skipped>>
     : never;
 
+/** Narrows a document's `slug`, when it has one, to the slugs that exist. */
+type WithSlug<TDocument, TSlug extends string> = TDocument extends {
+  slug: string;
+}
+  ? Simplify<Omit<TDocument, "slug"> & { slug: TSlug }>
+  : TDocument;
+
 type Content<TConfig extends Config = Config> = {
-  [TName in keyof TConfig["collections"]]: CollectionQuery<
+  [TName in keyof TConfig["collections"]]: Collection<
     InferDocument<TConfig["collections"][TName]>
   >;
 };
@@ -108,7 +123,9 @@ type Content<TConfig extends Config = Config> = {
 function defineCollection<
   TSchema extends StandardSchema,
   TOutput = Document<TSchema>,
->(collection: Collection<TSchema, TOutput>): Collection<TSchema, TOutput> {
+>(
+  collection: CollectionConfig<TSchema, TOutput>
+): CollectionConfig<TSchema, TOutput> {
   return collection;
 }
 
@@ -116,7 +133,7 @@ type InferredCollections<
   TSchemas extends Record<string, StandardSchema>,
   TOutputs extends { [TName in keyof TSchemas]: unknown },
 > = {
-  [TName in keyof TSchemas]: Collection<
+  [TName in keyof TSchemas]: CollectionConfig<
     TSchemas[TName],
     Awaited<TOutputs[TName]>
   >;
@@ -129,12 +146,15 @@ function defineConfig<
   TOutputs extends { [TName in keyof TSchemas]: unknown },
 >(config: {
   collections: {
-    [TName in keyof TSchemas]: Omit<Collection<TSchemas[TName]>, "transform">;
+    [TName in keyof TSchemas]: Omit<
+      CollectionConfig<TSchemas[TName]>,
+      "transform"
+    >;
   } & {
     [TName in keyof TOutputs]: {
       transform?: (
         document: Document<TSchemas[TName & keyof TSchemas]>,
-        context: TransformContext
+        context: TransformContext<TName & string>
       ) => TOutputs[TName];
     };
   };
@@ -143,9 +163,10 @@ function defineConfig<
 }
 
 export {
-  type Collection,
-  type Content,
+  type BaseDocument,
+  type CollectionConfig,
   type Config,
+  type Content,
   defineCollection,
   defineConfig,
   type Document,
@@ -154,12 +175,7 @@ export {
   Skipped,
   type StandardSchema,
   type TransformContext,
+  type WithSlug,
 };
 
-export type {
-  CollectionQuery,
-  FindManyArgs,
-  OrderBy,
-  Select,
-  Where,
-} from "./query";
+export type { Collection } from "./query";

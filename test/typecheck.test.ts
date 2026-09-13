@@ -38,6 +38,7 @@ const tsconfig = JSON.stringify({
     paths: {
       tomekit: [SOURCE],
       "tomekit/content": ["./.tomekit/content"],
+      "tomekit/content/*": ["./.tomekit/content/*"],
     },
     skipLibCheck: true,
     strict: true,
@@ -74,15 +75,18 @@ async function typecheck(usage: string) {
 describe("generated types", () => {
   it("type content, named types and slugs through the tsconfig alias", async () => {
     const output = await typecheck(`
-import { content, type Posts, type PostsSlug } from "tomekit/content";
+import { content, type AnyDocument, type Posts, type PostsSlug } from "tomekit/content";
+import posts from "tomekit/content/posts";
 
-const post: Posts | undefined = content.posts.findUnique({ where: { slug: "hello" } });
+const post: Posts | undefined = content.posts.get("hello");
 const title: string | undefined = post?.title;
-const slug: PostsSlug = "hello";
+const slug: PostsSlug | undefined = post?.slug;
 const fromRoute: string = "anything";
-content.posts.findUnique({ where: { slug: fromRoute } });
+posts.get(fromRoute);
+const slugs: readonly PostsSlug[] = posts.slugs;
+const everything: AnyDocument[] = Object.values(content).flatMap((collection): readonly AnyDocument[] => collection.all);
 
-export { slug, title };
+export { everything, slug, slugs, title };
 `);
 
     expect(output).toBe("");
@@ -92,7 +96,7 @@ export { slug, title };
     const output = await typecheck(`
 import { content, type PostsSlug } from "tomekit/content";
 
-content.posts.findMany({ where: { author: "me" } });
+content.posts.all[0]?.author;
 const slug: PostsSlug = "missing";
 
 export { slug };

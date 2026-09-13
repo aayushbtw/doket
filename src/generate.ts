@@ -37,44 +37,43 @@ function collectionFile(
       ? "never"
       : slugs.map((slug) => JSON.stringify(slug)).join(" | ");
   return `${HEADER}
-import type { InferDocument } from "tomekit";
+import type { Collection, InferDocument, WithSlug } from "tomekit";
 import type config from ${JSON.stringify(configImport)};
 
-export type ${type} = InferDocument<(typeof config)["collections"][${JSON.stringify(name)}]>;
-
 export type ${type}Slug = ${slugType};
+
+export type ${type} = WithSlug<InferDocument<(typeof config)["collections"][${JSON.stringify(name)}]>, ${type}Slug>;
+
+declare const collection: Collection<${type}, ${type}Slug>;
+export default collection;
 `;
 }
 
 function indexFile(collections: readonly GeneratedCollection[]): string {
-  const imports = collections
-    .map(({ name }) => {
-      const type = typeName(name);
-      return `import type { ${type}, ${type}Slug } from ${JSON.stringify(`./${name}`)};`;
-    })
-    .join("\n");
-  const entries = collections
-    .map(({ name }) => {
-      const type = typeName(name);
-      return `  ${JSON.stringify(name)}: CollectionQuery<${type}, ${type}Slug>;`;
-    })
-    .join("\n");
+  const types = collections.map(({ name }) => typeName(name));
   const reexports = collections
-    .map(({ name }) => {
-      const type = typeName(name);
+    .map(({ name }, index) => {
+      const type = types[index];
       return `export type { ${type}, ${type}Slug } from ${JSON.stringify(`./${name}`)};`;
     })
     .join("\n");
+  const entries = collections
+    .map(
+      ({ name }) =>
+        `  ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./${name}`)}).default;`
+    )
+    .join("\n");
+  const union = types.length === 0 ? "never" : types.join(" | ");
 
   return `${HEADER}
-import type { CollectionQuery } from "tomekit";
-${imports}
+${reexports}
+
+/** A document from any collection. */
+export type AnyDocument = ${union};
 
 export declare const content: {
 ${entries}
 };
-
-${reexports}
 `;
 }
 

@@ -34,8 +34,8 @@ interface Post {
 }
 
 interface Posts {
-  findMany: (args?: { orderBy?: { date?: "asc" | "desc" } }) => Post[];
-  findUnique: (args: { where: { slug: string } }) => Post | undefined;
+  all: readonly Post[];
+  get: (slug: string) => Post | undefined;
 }
 
 declare global {
@@ -44,6 +44,10 @@ declare global {
 
 function hasContent(module: object): module is { content: { posts: Posts } } {
   return "content" in module;
+}
+
+function hasDefault(module: object): module is { default: Posts } {
+  return "default" in module;
 }
 
 // Through a file that imports it, the way an app would, not by loading the id directly.
@@ -102,7 +106,7 @@ const HELLO = "---\ntitle: Hello\ndate: 2026-03-27\n---\n";
 const LATER = "---\ntitle: Later\ndate: 2026-04-01\n---\n";
 
 describe("tomekit()", () => {
-  it("serves every collection through the query API", async () => {
+  it("serves every collection in file name order", async () => {
     const { server: dev } = await start({
       "content/posts/hello.md": HELLO,
       "content/posts/later.md": LATER,
@@ -110,11 +114,34 @@ describe("tomekit()", () => {
 
     const posts = await loadPosts(dev);
 
-    expect(
-      posts.findMany({ orderBy: { date: "desc" } }).map((post) => post.title)
-    ).toStrictEqual(["Later", "Hello"]);
-    expect(posts.findUnique({ where: { slug: "hello" } })?.date).toBeInstanceOf(
-      Date
+    expect(posts.all.map((post) => post.title)).toStrictEqual([
+      "Hello",
+      "Later",
+    ]);
+    expect(posts.get("hello")?.date).toBeInstanceOf(Date);
+  });
+
+  it("serves one collection from its own module", async () => {
+    const { server: dev } = await start({
+      "content/posts/hello.md": HELLO,
+      "src/posts.ts": 'export { default } from "tomekit/content/posts";\n',
+    });
+
+    const module = await dev.ssrLoadModule("/src/posts.ts");
+
+    expect(hasDefault(module) && module.default.get("hello")?.title).toBe(
+      "Hello"
+    );
+  });
+
+  it("names the known collections when importing one that does not exist", async () => {
+    const { server: dev } = await start({
+      "content/posts/hello.md": HELLO,
+      "src/missing.ts": 'export { default } from "tomekit/content/drafts";\n',
+    });
+
+    await expect(dev.ssrLoadModule("/src/missing.ts")).rejects.toThrow(
+      'Collections in the config: "posts"'
     );
   });
 
@@ -131,7 +158,7 @@ describe("tomekit()", () => {
     change("content/posts/later.md");
     const posts = await loadPosts(dev);
 
-    expect(posts.findUnique({ where: { slug: "later" } })?.title).toBe("Later");
+    expect(posts.get("later")?.title).toBe("Later");
     expect(globalThis.tomekitRuns).toBe(2);
   });
 
@@ -147,7 +174,7 @@ describe("tomekit()", () => {
     change("content/posts/later.txt");
     const posts = await loadPosts(dev);
 
-    expect(posts.findMany()).toHaveLength(1);
+    expect(posts.all).toHaveLength(1);
   });
 
   it("keeps serving the other files when one is broken", async () => {
@@ -158,7 +185,7 @@ describe("tomekit()", () => {
 
     const posts = await loadPosts(dev);
 
-    expect(posts.findMany().map((post) => post.title)).toStrictEqual(["Hello"]);
+    expect(posts.all.map((post) => post.title)).toStrictEqual(["Hello"]);
     expect(messages.join("\n")).toContain("content/posts/broken.md: date:");
   });
 
