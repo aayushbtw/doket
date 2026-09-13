@@ -152,12 +152,36 @@ describe("findFirst, findUnique and count", () => {
   });
 
   it("finds by slug", () => {
-    expect(collection.findUnique({ slug: "a" })?.title).toBe("Alpha");
-    expect(collection.findUnique({ slug: "missing" })).toBeUndefined();
+    expect(collection.findUnique({ where: { slug: "a" } })?.title).toBe(
+      "Alpha"
+    );
+    expect(
+      collection.findUnique({ where: { slug: "missing" } })
+    ).toBeUndefined();
   });
 
   it("counts matches", () => {
     expect(collection.count()).toBe(3);
     expect(collection.count({ where: { tags: { has: "vite" } } })).toBe(2);
+  });
+});
+
+describe("select", () => {
+  it("returns only the selected fields", () => {
+    expect(
+      collection.findMany({ select: { slug: true, title: true }, take: 1 })
+    ).toStrictEqual([{ slug: "b", title: "Beta" }]);
+    expect(
+      collection.findFirst({ orderBy: { rank: "asc" }, select: { rank: true } })
+    ).toStrictEqual({ rank: 1 });
+    expect(
+      collection.findUnique({ select: { title: true }, where: { slug: "c" } })
+    ).toStrictEqual({ title: "Gamma" });
+  });
+
+  it("leaves out fields a document does not have", () => {
+    expect(
+      collection.findMany({ select: { draft: true, slug: true } })
+    ).toStrictEqual([{ slug: "b" }, { draft: true, slug: "a" }, { slug: "c" }]);
   });
 });

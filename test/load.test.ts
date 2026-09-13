@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { defineCollection } from "../src/index";
 import { loadCollection } from "../src/load";
+import type { FileCache } from "../src/load";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -13,7 +14,6 @@ afterEach(async () => {
 const posts = defineCollection({
   directory: "content/posts",
   include: "**/*.md",
-  name: "posts",
   schema: z.object({
     tags: z.array(z.string()).default([]),
     title: z.string(),
@@ -38,10 +38,11 @@ describe("loadCollection", () => {
       "content/posts/nested/a.md": "---\ntitle: A\n---\nBody of A",
     });
 
-    const entries = await loadCollection(posts, root);
+    const entries = await loadCollection("posts", posts, root);
 
     expect(entries).toStrictEqual([
       {
+        filePath: "content/posts/b.md",
         output: {
           content: "\nBody of B\n",
           file: { name: "b.md", path: "content/posts/b.md" },
@@ -52,6 +53,7 @@ describe("loadCollection", () => {
         slug: "b",
       },
       {
+        filePath: "content/posts/nested/a.md",
         output: {
           content: "Body of A",
           file: { name: "a.md", path: "content/posts/nested/a.md" },
@@ -68,7 +70,6 @@ describe("loadCollection", () => {
     const withSlug = defineCollection({
       directory: "content/posts",
       include: "*.md",
-      name: "withSlug",
       schema: z.object({ slug: z.string().optional(), title: z.string() }),
     });
     const root = await project({
@@ -77,7 +78,7 @@ describe("loadCollection", () => {
       "content/posts/plain.md": "---\ntitle: Plain\n---\n",
     });
 
-    const entries = await loadCollection(withSlug, root);
+    const entries = await loadCollection("posts", withSlug, root);
 
     expect(entries.map((entry) => entry.slug)).toStrictEqual([
       "hello",
@@ -89,7 +90,6 @@ describe("loadCollection", () => {
     const loose = defineCollection({
       directory: "content/posts",
       include: "*.md",
-      name: "loose",
       schema: z.looseObject({ title: z.string() }),
     });
     const root = await project({
@@ -98,8 +98,10 @@ describe("loadCollection", () => {
     });
     const warnings: string[] = [];
 
-    const entries = await loadCollection(loose, root, (message) => {
-      warnings.push(message);
+    const entries = await loadCollection("posts", loose, root, {
+      warn: (message) => {
+        warnings.push(message);
+      },
     });
 
     expect(warnings).toStrictEqual([
@@ -115,7 +117,6 @@ describe("loadCollection", () => {
     const loose = defineCollection({
       directory: "content/posts",
       include: "*.md",
-      name: "loose",
       schema: z.object({}),
     });
     const root = await project({
@@ -123,7 +124,7 @@ describe("loadCollection", () => {
       "content/posts/none.md": "No frontmatter",
     });
 
-    const entries = await loadCollection(loose, root);
+    const entries = await loadCollection("posts", loose, root);
 
     expect(outputs(entries)).toMatchObject([
       { content: "Only body" },
@@ -144,7 +145,7 @@ describe("loadCollection", () => {
       "content/posts/drafts/d.md": "---\ntitle: D\n---\n",
     });
 
-    const entries = await loadCollection(mixed, root);
+    const entries = await loadCollection("posts", mixed, root);
 
     expect(outputs(entries)).toMatchObject([{ title: "A" }, { title: "B" }]);
   });
@@ -158,10 +159,14 @@ describe("loadCollection", () => {
       transform: (document) => ({ title: document.title }),
     });
 
-    const entries = await loadCollection(titleOnly, root);
+    const entries = await loadCollection("posts", titleOnly, root);
 
     expect(entries).toStrictEqual([
-      { output: { title: "Hello" }, slug: "hello" },
+      {
+        filePath: "content/posts/hello.md",
+        output: { title: "Hello" },
+        slug: "hello",
+      },
     ]);
   });
 
@@ -178,7 +183,7 @@ describe("loadCollection", () => {
           : { title: document.title },
     });
 
-    const entries = await loadCollection(published, root);
+    const entries = await loadCollection("posts", published, root);
 
     expect(outputs(entries)).toStrictEqual([{ title: "Live" }]);
   });
@@ -188,7 +193,7 @@ describe("loadCollection", () => {
       "content/posts/broken.md": "---\ntags: []\n---\n",
     });
 
-    await expect(loadCollection(posts, root)).rejects.toThrow(
+    await expect(loadCollection("posts", posts, root)).rejects.toThrow(
       /^content\/posts\/broken\.md: title: /u
     );
   });
@@ -198,8 +203,104 @@ describe("loadCollection", () => {
       "content/posts/bad.md": "---\ntitle: [unclosed\n---\n",
     });
 
-    await expect(loadCollection(posts, root)).rejects.toThrow(
+    await expect(loadCollection("posts", posts, root)).rejects.toThrow(
       /^content\/posts\/bad\.md: /u
     );
+  });
+
+  it("matches Markdown files anywhere in the directory by default", async () => {
+    const markdown = defineCollection({
+      directory: "content/posts",
+      schema: z.object({ title: z.string() }),
+    });
+    const root = await project({
+      "content/posts/a.md": "---\ntitle: A\n---\n",
+      "content/posts/deep/b.md": "---\ntitle: B\n---\n",
+      "content/posts/image.png": "not markdown",
+    });
+
+    const entries = await loadCollection("posts", markdown, root);
+
+    expect(outputs(entries)).toMatchObject([{ title: "A" }, { title: "B" }]);
+  });
+
+  it("warns when the directory is missing or nothing matches", async () => {
+    const root = await project({ "content/posts/notes.txt": "text" });
+    const warnings: string[] = [];
+    function warn(message: string) {
+      warnings.push(message);
+    }
+
+    await loadCollection(
+      "typo",
+      defineCollection({ ...posts, directory: "content/post" }),
+      root,
+      { warn }
+    );
+    await loadCollection("posts", posts, root, { warn });
+
+    expect(warnings).toStrictEqual([
+      'typo: directory "content/post" does not exist',
+      'posts: no files in "content/posts" match "**/*.md"',
+    ]);
+  });
+
+  it("fails on a slug used by two files", async () => {
+    const withSlug = defineCollection({
+      directory: "content/posts",
+      schema: z.object({ slug: z.string().optional(), title: z.string() }),
+    });
+    const root = await project({
+      "content/posts/a.md": "---\ntitle: A\nslug: same\n---\n",
+      "content/posts/same.md": "---\ntitle: Same\n---\n",
+    });
+
+    await expect(loadCollection("posts", withSlug, root)).rejects.toThrow(
+      'content/posts/same.md: slug "same" is already used by content/posts/a.md'
+    );
+  });
+
+  it("reports failing files and keeps the rest when given onError", async () => {
+    const root = await project({
+      "content/posts/broken.md": "---\ntags: []\n---\n",
+      "content/posts/fine.md": "---\ntitle: Fine\n---\n",
+    });
+    const errors: string[] = [];
+
+    const entries = await loadCollection("posts", posts, root, {
+      onError: (error) => {
+        errors.push(error.message);
+      },
+    });
+
+    expect(outputs(entries)).toMatchObject([{ title: "Fine" }]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^content\/posts\/broken\.md: title: /u);
+  });
+
+  it("reruns the transform only for files that changed", async () => {
+    const created = await createProject({
+      "content/posts/a.md": "---\ntitle: A\n---\n",
+      "content/posts/b.md": "---\ntitle: B\n---\n",
+    });
+    ({ cleanup } = created);
+    const transformed: string[] = [];
+    const counted = defineCollection({
+      ...posts,
+      transform: (document) => {
+        transformed.push(document.slug);
+        return { title: document.title };
+      },
+    });
+    const cache: FileCache = new Map();
+
+    await loadCollection("posts", counted, created.root, { cache });
+    await created.write({ "content/posts/b.md": "---\ntitle: B2\n---\n" });
+    const entries = await loadCollection("posts", counted, created.root, {
+      cache,
+    });
+
+    expect(transformed).toStrictEqual(["a", "b", "b"]);
+    expect(outputs(entries)).toStrictEqual([{ title: "A" }, { title: "B2" }]);
   });
 });

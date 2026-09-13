@@ -8,7 +8,7 @@ Point tomekit at a folder of Markdown files and a schema. At build time it reads
 import { content } from "tomekit/content";
 
 content.posts.findMany({ orderBy: { publishedAt: "desc" }, take: 5 });
-content.posts.findUnique({ slug: "hello-world" });
+content.posts.findUnique({ where: { slug: "hello-world" } });
 ```
 
 ## Why tomekit
@@ -17,7 +17,7 @@ content.posts.findUnique({ slug: "hello-world" });
 - **It ships data, not a parser.** Frontmatter is parsed and validated during the build, so a typo fails the build, not a request.
 - **It does not render Markdown.** Your transform gets the raw body and you parse it with whatever you already use. That is also why tomekit has one dependency.
 - **It works with any validator.** Schemas use [Standard Schema](https://standardschema.dev), so Zod, Valibot and ArkType all work.
-- **It has no generated folder.** Types come straight from your config, through one small file that is written once and committed.
+- **Your content stays out of generated files.** Only types are generated, into a gitignored folder. Documents are served by the plugin, so a post edit never rewrites anything on disk.
 
 ## Install
 
@@ -35,17 +35,17 @@ Requires Node 22.17 or later and Vite 6.4 or later.
 import { defineCollection, defineConfig } from "tomekit";
 import { z } from "zod";
 
-const posts = defineCollection({
-  name: "posts",
-  directory: "content/posts",
-  include: "**/*.md",
-  schema: z.object({
-    title: z.string(),
-    publishedAt: z.coerce.date(),
-  }),
+export default defineConfig({
+  collections: {
+    posts: defineCollection({
+      directory: "content/posts",
+      schema: z.object({
+        title: z.string(),
+        publishedAt: z.coerce.date(),
+      }),
+    }),
+  },
 });
-
-export default defineConfig({ collections: [posts] });
 ```
 
 **2. Add the plugin** to `vite.config.ts`:
@@ -59,15 +59,45 @@ export default defineConfig({
 });
 ```
 
-**3. Query your content** anywhere in your app:
+**3. Point TypeScript at the generated types** in `tsconfig.json`, and ignore the folder in `.gitignore`:
+
+```json
+{
+  "compilerOptions": {
+    "paths": { "tomekit/content": ["./.tomekit/content"] }
+  }
+}
+```
+
+```
+.tomekit
+```
+
+**4. Query your content** anywhere in your app:
 
 ```ts
 import { content } from "tomekit/content";
 
-const post = content.posts.findUnique({ slug });
+const post = content.posts.findUnique({ where: { slug } });
 ```
 
-That's the whole setup. The first time Vite runs, the plugin writes `tomekit-env.d.ts` next to your config, which is what types `tomekit/content`. Commit it: it only changes if your config file moves. Importing `tomekit/content` without the plugin throws an error that says so.
+Whenever content loads, the plugin writes types for every collection into `.tomekit/content`: what each document looks like and which slugs exist. They are rewritten only when a collection or a slug changes. Importing `tomekit/content` without the plugin throws an error that says so.
+
+## Types
+
+Each collection gets a document type and a slug type, named after its key in PascalCase:
+
+```ts
+import { content, type Posts, type PostsSlug } from "tomekit/content";
+
+function title(post: Posts) {
+  return post.title;
+}
+
+content.posts.findUnique({ where: { slug: "hello-world" } }); // suggests PostsSlug values, accepts any string
+```
+
+The types only update while Vite is running, so after a fresh clone, run `vite dev` or `vite build` once before `tsc`.
 
 ## Queries
 
@@ -84,7 +114,7 @@ content.posts.findMany({
 });
 
 content.posts.findFirst({ orderBy: { publishedAt: "desc" } }); // Post | undefined
-content.posts.findUnique({ slug: "hello-world" }); // Post | undefined
+content.posts.findUnique({ where: { slug: "hello-world" } }); // Post | undefined
 content.posts.count({ where: { draft: false } }); // number
 ```
 
@@ -107,6 +137,14 @@ content.posts.findMany({ where: { NOT: { tags: { has: "draft" } } } });
 content.posts.findMany({ where: (post) => post.tags.length > 2 });
 ```
 
+### `select`
+
+Return only some fields, eg for a list page that does not need each post's body:
+
+```ts
+content.posts.findMany({ select: { slug: true, title: true } }); // { slug: string; title: string }[]
+```
+
 ### `orderBy`
 
 One field, or several in priority order. Missing values sort last either way.
@@ -117,11 +155,12 @@ content.posts.findMany({ orderBy: [{ featured: "desc" }, { title: "asc" }] });
 
 ## Collection options
 
+Each key in `collections` is the name you query it by, eg `posts` for `content.posts`. Wrap each one in `defineCollection` so `transform` knows your schema's types.
+
 | Option | Required |  |
 | --- | --- | --- |
-| `name` | yes | The key you query the collection by, eg `content.posts` |
 | `directory` | yes | Where the files live, relative to the project root |
-| `include` | yes | A glob or globs relative to `directory`, eg `"**/*.md"` |
+| `include` | no | A glob or globs relative to `directory`. Defaults to `"**/*.md"` |
 | `exclude` | no | A glob or globs relative to `directory` to leave out |
 | `schema` | yes | Any [Standard Schema](https://standardschema.dev) for the frontmatter |
 | `transform` | no | Shapes each document at build time, see [Transform](#transform) |
@@ -147,9 +186,7 @@ A file without frontmatter is validated as an empty object. Frontmatter named `c
 import { marked } from "marked";
 
 const posts = defineCollection({
-  name: "posts",
   directory: "content/posts",
-  include: "**/*.md",
   schema: z.object({ title: z.string() }),
   transform: ({ content, slug, title }) => ({
     title,
@@ -159,7 +196,7 @@ const posts = defineCollection({
 });
 ```
 
-The return type of `transform` becomes the type your queries return. `findUnique({ slug })` keeps working even if your transform leaves `slug` out.
+The return type of `transform` becomes the type your queries return. `findUnique({ where: { slug } })` keeps working even if your transform leaves `slug` out.
 
 ### Skipping documents
 
@@ -178,32 +215,26 @@ A file that fails validation fails the build, and the message names the file and
 content/posts/hello.md: title: Invalid input: expected string, received undefined
 ```
 
-In dev, fix the file and tomekit reloads.
+In dev, the same error is logged and only that file is left out, so the rest of your site keeps working while you fix it. Two files with the same slug are handled the same way.
+
+tomekit also warns when:
+
+- a collection's `directory` does not exist, or no files in it match `include`
+- frontmatter uses `content` or `file`, which tomekit sets
+- `tomekit/content` is imported in the browser bundle, which would ship every document to the client
+
+While the dev server runs, saving a file only re-runs that file's transform, and files that do not match a collection's `include` never trigger a reload.
 
 ## Options
 
 ```ts
-tomekit({ config: "tomekit.config.ts", dts: "tomekit-env.d.ts" });
+tomekit({ config: "tomekit.config.ts", types: ".tomekit" });
 ```
 
 | Option | Default |  |
 | --- | --- | --- |
 | `config` | `"tomekit.config.ts"` | Path to the config file, relative to the Vite root |
-| `dts` | `"tomekit-env.d.ts"` | Where to write the file that types `tomekit/content`, or `false` to skip it |
-
-If your tsconfig only includes some folders, eg `"include": ["src"]`, set `dts` to a path inside them, eg `"src/tomekit-env.d.ts"`. Otherwise TypeScript never sees the file and `content` is untyped.
-
-tomekit never overwrites the file once you edit it. To register the type yourself, set `dts: false` and add this anywhere TypeScript sees:
-
-```ts
-import type config from "./tomekit.config";
-
-declare module "tomekit" {
-  interface Register {
-    config: typeof config;
-  }
-}
-```
+| `types` | `".tomekit"` | The folder generated types are written to, or `false` to skip them. Update the tsconfig `paths` entry to match |
 
 ## Not in scope
 

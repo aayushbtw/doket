@@ -1,26 +1,31 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createServer } from "vite";
+import { createLogger, createServer } from "vite";
 import type { ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { tomekit } from "../src/vite";
 import { createProject, QUERY, SOURCE } from "./project";
 
+// Counts transform runs on `globalThis`, which the config shares with the test
+// even though Vite imports it separately.
 const config = `
 import { z } from "zod";
 import { defineCollection, defineConfig } from ${JSON.stringify(SOURCE)};
 
-const posts = defineCollection({
-  directory: "content/posts",
-  include: "*.md",
-  name: "posts",
-  schema: z.object({ date: z.coerce.date(), title: z.string() }),
-  transform: (document) => ({ date: document.date, title: document.title }),
+export default defineConfig({
+  collections: {
+    posts: defineCollection({
+      directory: "content/posts",
+      schema: z.object({ date: z.coerce.date(), title: z.string() }),
+      transform: (document) => {
+        globalThis.tomekitRuns = (globalThis.tomekitRuns ?? 0) + 1;
+        return { date: document.date, title: document.title };
+      },
+    }),
+  },
 });
-
-export default defineConfig({ collections: [posts] });
 `;
 
 interface Post {
@@ -30,7 +35,11 @@ interface Post {
 
 interface Posts {
   findMany: (args?: { orderBy?: { date?: "asc" | "desc" } }) => Post[];
-  findUnique: (args: { slug: string }) => Post | undefined;
+  findUnique: (args: { where: { slug: string } }) => Post | undefined;
+}
+
+declare global {
+  var tomekitRuns: number | undefined;
 }
 
 function hasContent(module: object): module is { content: { posts: Posts } } {
@@ -50,6 +59,7 @@ let server: ViteDevServer | undefined;
 let cleanup: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
+  globalThis.tomekitRuns = 0;
   await server?.close();
   await cleanup?.();
 });
@@ -61,23 +71,41 @@ async function start(files: Record<string, string>) {
     ...files,
   });
   ({ cleanup } = project);
+
+  const messages: string[] = [];
+  const logger = createLogger("silent");
+  logger.error = (message) => {
+    messages.push(message);
+  };
+  logger.warn = (message) => {
+    messages.push(message);
+  };
+
   server = await createServer({
     configFile: false,
-    logLevel: "silent",
+    customLogger: logger,
     plugins: [tomekit()],
     // The generated module imports the query runtime the way an installed package would.
     resolve: { alias: { "tomekit/query": QUERY } },
     root: project.root,
     server: { hmr: false, middlewareMode: true },
   });
-  return { project, server };
+
+  function change(file: string) {
+    server?.watcher.emit("all", "change", path.join(project.root, file));
+  }
+
+  return { change, messages, project, server };
 }
+
+const HELLO = "---\ntitle: Hello\ndate: 2026-03-27\n---\n";
+const LATER = "---\ntitle: Later\ndate: 2026-04-01\n---\n";
 
 describe("tomekit()", () => {
   it("serves every collection through the query API", async () => {
     const { server: dev } = await start({
-      "content/posts/hello.md": "---\ntitle: Hello\ndate: 2026-03-27\n---\n",
-      "content/posts/later.md": "---\ntitle: Later\ndate: 2026-04-01\n---\n",
+      "content/posts/hello.md": HELLO,
+      "content/posts/later.md": LATER,
     });
 
     const posts = await loadPosts(dev);
@@ -85,38 +113,83 @@ describe("tomekit()", () => {
     expect(
       posts.findMany({ orderBy: { date: "desc" } }).map((post) => post.title)
     ).toStrictEqual(["Later", "Hello"]);
-    expect(posts.findUnique({ slug: "hello" })?.date).toBeInstanceOf(Date);
+    expect(posts.findUnique({ where: { slug: "hello" } })?.date).toBeInstanceOf(
+      Date
+    );
   });
 
-  it("picks up a new file after a change in the collection directory", async () => {
-    const { project, server: dev } = await start({
-      "content/posts/hello.md": "---\ntitle: Hello\ndate: 2026-03-27\n---\n",
-    });
+  it("reloads for a new file and reruns only what changed", async () => {
+    const {
+      change,
+      project,
+      server: dev,
+    } = await start({ "content/posts/hello.md": HELLO });
+    await loadPosts(dev);
+    expect(globalThis.tomekitRuns).toBe(1);
+
+    await project.write({ "content/posts/later.md": LATER });
+    change("content/posts/later.md");
+    const posts = await loadPosts(dev);
+
+    expect(posts.findUnique({ where: { slug: "later" } })?.title).toBe("Later");
+    expect(globalThis.tomekitRuns).toBe(2);
+  });
+
+  it("ignores changes to files outside the collection", async () => {
+    const {
+      change,
+      project,
+      server: dev,
+    } = await start({ "content/posts/hello.md": HELLO });
     await loadPosts(dev);
 
-    await project.write({
-      "content/posts/later.md": "---\ntitle: Later\ndate: 2026-04-01\n---\n",
+    await project.write({ "content/posts/later.txt": LATER });
+    change("content/posts/later.txt");
+    const posts = await loadPosts(dev);
+
+    expect(posts.findMany()).toHaveLength(1);
+  });
+
+  it("keeps serving the other files when one is broken", async () => {
+    const { messages, server: dev } = await start({
+      "content/posts/broken.md": "---\ntitle: Broken\n---\n",
+      "content/posts/hello.md": HELLO,
     });
-    dev.watcher.emit(
-      "all",
-      "add",
-      path.join(project.root, "content/posts/later.md")
-    );
 
     const posts = await loadPosts(dev);
-    expect(posts.findUnique({ slug: "later" })?.title).toBe("Later");
+
+    expect(posts.findMany().map((post) => post.title)).toStrictEqual(["Hello"]);
+    expect(messages.join("\n")).toContain("content/posts/broken.md: date:");
   });
-});
 
-describe("tomekit() types", () => {
-  it("writes the declaration that types tomekit/content", async () => {
-    const { project } = await start({});
+  it("warns when tomekit/content reaches the browser bundle", async () => {
+    const { messages, server: dev } = await start({
+      "content/posts/hello.md": HELLO,
+    });
 
-    const written = await readFile(
-      path.join(project.root, "tomekit-env.d.ts"),
+    await dev.environments.client.transformRequest("tomekit/content");
+
+    expect(messages.join("\n")).toContain("imported in the browser bundle");
+  });
+
+  it("keeps tomekit out of dependency pre-bundling in every environment", async () => {
+    const { server: dev } = await start({});
+
+    for (const environment of Object.values(dev.environments)) {
+      expect(environment.config.optimizeDeps.exclude).toEqual(
+        expect.arrayContaining(["tomekit", "tomekit/content", "tomekit/query"])
+      );
+    }
+  });
+
+  it("writes types for tomekit/content into .tomekit", async () => {
+    const { project } = await start({ "content/posts/hello.md": HELLO });
+
+    const posts = await readFile(
+      path.join(project.root, ".tomekit", "content", "posts.d.ts"),
       "utf-8"
     );
-    expect(written).toContain('import type config from "./tomekit.config";');
+    expect(posts).toContain('export type PostsSlug = "hello";');
   });
 });
 

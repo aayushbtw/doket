@@ -37,8 +37,20 @@ type OrderBy<TDocument> =
   | { [TKey in keyof TDocument]?: "asc" | "desc" }
   | readonly { [TKey in keyof TDocument]?: "asc" | "desc" }[];
 
-interface FindManyArgs<TDocument> {
+/** Fields to return, eg `{ title: true, slug: true }`. Everything when left out. */
+type Select<TDocument> = { [TKey in keyof TDocument]?: true };
+
+type Simplify<TValue> = { [TKey in keyof TValue]: TValue[TKey] };
+
+// Checks `TSelect` first, so a generic caller that passes no `select` still
+// gets `TDocument` back instead of a type TypeScript cannot resolve.
+type Selected<TDocument, TSelect> = [TSelect] extends [undefined]
+  ? TDocument
+  : Simplify<Pick<TDocument, Extract<keyof TSelect, keyof TDocument>>>;
+
+interface FindManyArgs<TDocument, TSelect = undefined> {
   orderBy?: OrderBy<TDocument>;
+  select?: TSelect;
   /** How many matching documents to leave out from the start. */
   skip?: number;
   /** The most documents to return. */
@@ -46,14 +58,24 @@ interface FindManyArgs<TDocument> {
   where?: Where<TDocument>;
 }
 
-interface CollectionQuery<TDocument> {
+interface CollectionQuery<TDocument, TSlug extends string = string> {
   count: (args?: { where?: Where<TDocument> }) => number;
-  findFirst: (
-    args?: Omit<FindManyArgs<TDocument>, "take">
-  ) => TDocument | undefined;
+  findFirst: <TSelect extends Select<TDocument> | undefined = undefined>(
+    args?: Omit<FindManyArgs<TDocument, TSelect>, "take">
+  ) => Selected<TDocument, TSelect> | undefined;
   /** Every matching document. With no arguments, the whole collection in file name order. */
-  findMany: (args?: FindManyArgs<TDocument>) => TDocument[];
-  findUnique: (args: { slug: string }) => TDocument | undefined;
+  findMany: <TSelect extends Select<TDocument> | undefined = undefined>(
+    args?: FindManyArgs<TDocument, TSelect>
+  ) => Selected<TDocument, TSelect>[];
+  findUnique: <
+    TSelect extends Select<TDocument> | undefined = undefined,
+  >(args: {
+    select?: TSelect;
+    // `string & {}` keeps the known slugs as suggestions while still accepting
+    // any string, eg a route param; plain `string` would swallow them.
+    // oxlint-disable-next-line typescript/ban-types
+    where: { slug: TSlug | (string & {}) };
+  }) => Selected<TDocument, TSelect> | undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -188,6 +210,17 @@ function sorter(orderBy: unknown) {
   };
 }
 
+function pick(document: unknown, select: unknown): unknown {
+  if (!isRecord(select) || !isRecord(document)) {
+    return document;
+  }
+  return Object.fromEntries(
+    Object.keys(select)
+      .filter((key) => select[key] === true && Object.hasOwn(document, key))
+      .map((key) => [key, document[key]])
+  );
+}
+
 /**
  * Wraps a collection's documents in the query API. Used by the generated
  * `tomekit/content` module: each entry is `[slug, document]`.
@@ -198,31 +231,43 @@ function createCollection<TDocument>(
   const documents = entries.map(([, document]) => document);
   const bySlug = new Map(entries);
 
-  function findMany({
+  function filter(where: Where<TDocument> | undefined) {
+    return where === undefined
+      ? [...documents]
+      : documents.filter((document) => matches(document, where));
+  }
+
+  function findMany<TSelect>({
     orderBy,
+    select,
     skip = 0,
     take,
     where,
-  }: FindManyArgs<TDocument> = {}) {
-    let result =
-      where === undefined
-        ? [...documents]
-        : documents.filter((document) => matches(document, where));
+  }: FindManyArgs<TDocument, TSelect> = {}) {
+    let result = filter(where);
     if (orderBy !== undefined) {
       result = result.toSorted(sorter(orderBy));
     }
-    return result.slice(skip, take === undefined ? undefined : skip + take);
+    return result
+      .slice(skip, take === undefined ? undefined : skip + take)
+      .map((document) => pick(document, select));
   }
 
+  // The runtime cannot see `TSelect`: `pick` returns exactly the selected
+  // fields, which is what `Selected` describes, so these casts only restate it.
+  /* oxlint-disable typescript/no-unsafe-type-assertion */
   return {
-    count: ({ where } = {}) =>
-      where === undefined
-        ? documents.length
-        : documents.filter((document) => matches(document, where)).length,
-    findFirst: (args = {}) => findMany({ ...args, take: 1 })[0],
-    findMany,
-    findUnique: ({ slug }) => bySlug.get(slug),
+    count: ({ where } = {}) => filter(where).length,
+    findFirst: (args = {}) => findMany({ ...args, take: 1 })[0] as never,
+    findMany: (args) => findMany(args) as never,
+    findUnique: ({ select, where }) => {
+      const document = bySlug.get(where.slug);
+      return (
+        document === undefined ? undefined : pick(document, select)
+      ) as never;
+    },
   };
+  /* oxlint-enable typescript/no-unsafe-type-assertion */
 }
 
 export {
@@ -230,5 +275,8 @@ export {
   createCollection,
   type FindManyArgs,
   type OrderBy,
+  type Select,
+  type Selected,
+  type Simplify,
   type Where,
 };

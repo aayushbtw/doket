@@ -1,4 +1,5 @@
-import { glob, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { glob, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { parse as parseYaml } from "yaml";
@@ -8,70 +9,187 @@ import type { Collection, Document } from "./index";
 
 const FRONTMATTER = /^---\r?\n(?:(?<data>[\s\S]*?)\r?\n)?---(?:\r?\n|$)/u;
 const EXTENSION = /\.[^./]+$/u;
-
-function skip(reason?: string): Skipped {
-  return new Skipped(reason);
-}
-
+const DEFAULT_INCLUDE = "**/*.md";
 const RESERVED = ["content", "file"];
 
 interface Entry {
+  filePath: string;
   output: unknown;
   /** Computed before the transform, so lookups work whatever it returns. */
   slug: string;
 }
 
+/** A file's last result, reused while its source and the config are unchanged. */
+type FileCache = Map<string, { entry: Entry; hash: string }>;
+
+interface LoadOptions {
+  /** Reused across loads of the same collection. */
+  cache?: FileCache;
+  /**
+   * Receives a file that failed, which is then left out. Without it, the first
+   * failure fails the whole load.
+   */
+  onError?: (error: Error) => void;
+  warn?: (message: string) => void;
+}
+
+function skip(reason?: string): Skipped {
+  return new Skipped(reason);
+}
+
+function includePatterns(collection: Collection): string[] {
+  return [collection.include ?? DEFAULT_INCLUDE].flat();
+}
+
+function excludePatterns(collection: Collection): string[] {
+  return collection.exclude === undefined ? [] : [collection.exclude].flat();
+}
+
+/** Whether a path relative to the collection directory belongs to it. */
+function inCollection(collection: Collection, file: string): boolean {
+  const posix = file.split(path.sep).join("/");
+  return (
+    includePatterns(collection).some((pattern) =>
+      path.matchesGlob(posix, pattern)
+    ) &&
+    !excludePatterns(collection).some((pattern) =>
+      path.matchesGlob(posix, pattern)
+    )
+  );
+}
+
+function hash(source: string): string {
+  return createHash("sha1").update(source).digest("base64");
+}
+
+async function isDirectory(directory: string): Promise<boolean> {
+  const stats = await stat(directory).catch(() => null);
+  return stats?.isDirectory() ?? false;
+}
+
 /** Every kept document, in file name order. */
 async function loadCollection(
+  name: string,
   collection: Collection,
   root: string,
-  warn: (message: string) => void = console.warn
+  { cache, onError, warn = console.warn }: LoadOptions = {}
 ): Promise<Entry[]> {
   const directory = path.resolve(root, collection.directory);
+  if (!(await isDirectory(directory))) {
+    warn(`${name}: directory "${collection.directory}" does not exist`);
+    return [];
+  }
+
   const files: string[] = [];
-  for await (const file of glob(collection.include, {
+  for await (const file of glob(includePatterns(collection), {
     cwd: directory,
-    exclude:
-      collection.exclude === undefined ? [] : [collection.exclude].flat(),
+    exclude: excludePatterns(collection),
   })) {
     files.push(file);
   }
   files.sort();
+  if (files.length === 0) {
+    warn(
+      `${name}: no files in "${collection.directory}" match ${JSON.stringify(collection.include ?? DEFAULT_INCLUDE)}`
+    );
+  }
 
-  const entries = await Promise.all(
+  const results = await Promise.all(
     files.map(async (file) => {
       const filePath = path.relative(root, path.join(directory, file));
       try {
-        const document = await loadDocument(
-          collection,
-          directory,
-          file,
-          filePath,
-          warn
-        );
-        const output = collection.transform
-          ? await collection.transform(document, { skip })
-          : document;
-        return { output, slug: document.slug };
+        return await loadFile(collection, directory, file, filePath, {
+          cache,
+          warn,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`${filePath}: ${message}`, {
-          cause: error,
-        });
+        const failure = new Error(`${filePath}: ${message}`, { cause: error });
+        if (onError === undefined) {
+          throw failure;
+        }
+        onError(failure);
+        return null;
       }
     })
   );
-  return entries.filter((entry) => !(entry.output instanceof Skipped));
+
+  if (cache !== undefined) {
+    const present = new Set(files);
+    for (const file of cache.keys()) {
+      if (!present.has(file)) {
+        cache.delete(file);
+      }
+    }
+  }
+
+  const entries = results.filter(
+    (entry): entry is Entry =>
+      entry !== null && !(entry.output instanceof Skipped)
+  );
+  return withoutDuplicates(entries, onError);
 }
 
-async function loadDocument(
+function withoutDuplicates(
+  entries: Entry[],
+  onError: LoadOptions["onError"]
+): Entry[] {
+  const seen = new Map<string, Entry>();
+  const kept: Entry[] = [];
+  for (const entry of entries) {
+    const first = seen.get(entry.slug);
+    if (first === undefined) {
+      seen.set(entry.slug, entry);
+      kept.push(entry);
+      continue;
+    }
+    const failure = new Error(
+      `${entry.filePath}: slug "${entry.slug}" is already used by ${first.filePath}`
+    );
+    if (onError === undefined) {
+      throw failure;
+    }
+    onError(failure);
+  }
+  return kept;
+}
+
+async function loadFile(
   collection: Collection,
   directory: string,
   file: string,
   filePath: string,
+  { cache, warn }: { cache?: FileCache; warn: (message: string) => void }
+): Promise<Entry> {
+  const source = await readFile(path.join(directory, file), "utf-8");
+  const sourceHash = hash(source);
+  const cached = cache?.get(file);
+  if (cached?.hash === sourceHash) {
+    return cached.entry;
+  }
+
+  const document = await parseDocument(
+    collection,
+    source,
+    file,
+    filePath,
+    warn
+  );
+  const output = collection.transform
+    ? await collection.transform(document, { skip })
+    : document;
+  const entry = { filePath, output, slug: document.slug };
+  cache?.set(file, { entry, hash: sourceHash });
+  return entry;
+}
+
+async function parseDocument(
+  collection: Collection,
+  source: string,
+  file: string,
+  filePath: string,
   warn: (message: string) => void
 ): Promise<Document<Collection["schema"]>> {
-  const source = await readFile(path.join(directory, file), "utf-8");
   const match = FRONTMATTER.exec(source);
   const frontmatter = match?.groups?.data;
   const data: unknown =
@@ -104,7 +222,7 @@ async function loadDocument(
     }
   }
 
-  const { slug } = value as { slug?: unknown };
+  const slug = "slug" in value ? value.slug : undefined;
   return {
     ...value,
     content: match ? source.slice(match[0].length) : source,
@@ -116,4 +234,4 @@ async function loadDocument(
   };
 }
 
-export { type Entry, loadCollection };
+export { type Entry, type FileCache, inCollection, loadCollection };

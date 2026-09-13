@@ -1,4 +1,4 @@
-import type { CollectionQuery } from "./query";
+import type { CollectionQuery, Simplify } from "./query";
 
 // The subset of Standard Schema v1 (https://standardschema.dev) the engine
 // reads, so any validator that implements it works, not only Zod.
@@ -33,19 +33,18 @@ interface FileInfo {
   path: string;
 }
 
-type Document<TSchema> = Omit<
-  InferOutput<TSchema>,
-  "content" | "file" | "slug"
-> & {
-  /** The file's body, after the frontmatter block. */
-  content: string;
-  file: FileInfo;
-  /**
-   * The frontmatter `slug` when it is a string, otherwise the path inside the
-   * collection directory without the extension, eg `guides/setup`.
-   */
-  slug: string;
-};
+type Document<TSchema> = Simplify<
+  Omit<InferOutput<TSchema>, "content" | "file" | "slug"> & {
+    /** The file's body, after the frontmatter block. */
+    content: string;
+    file: FileInfo;
+    /**
+     * The frontmatter `slug` when it is a string, otherwise the path inside the
+     * collection directory without the extension, eg `guides/setup`.
+     */
+    slug: string;
+  }
+>;
 
 /** Returned from `transform` to leave a document out of its collection. */
 class Skipped {
@@ -67,7 +66,6 @@ interface TransformContext {
 }
 
 interface Collection<
-  TName extends string = string,
   TSchema extends StandardSchema = StandardSchema,
   TOutput = unknown,
 > {
@@ -75,10 +73,8 @@ interface Collection<
   directory: string;
   /** Glob patterns relative to `directory` to leave out. */
   exclude?: string | readonly string[];
-  /** Glob patterns relative to `directory`. */
-  include: string | readonly string[];
-  /** The key the collection is read by, eg `content.posts`. */
-  name: TName;
+  /** Glob patterns relative to `directory`. Defaults to `"**\/*.md"`. */
+  include?: string | readonly string[];
   schema: TSchema;
   transform?: (
     document: Document<TSchema>,
@@ -87,56 +83,36 @@ interface Collection<
 }
 
 interface Config<
-  TCollections extends readonly Collection[] = readonly Collection[],
+  TCollections extends Record<string, Collection> = Record<string, Collection>,
 > {
+  /** Keyed by the name you query them by, eg `posts` for `content.posts`. */
   collections: TCollections;
 }
 
-/**
- * Augment this with your config's type to type `tomekit/content`:
- *
- * ```ts
- * declare module "tomekit" {
- *   interface Register {
- *     config: typeof config;
- *   }
- * }
- * ```
- */
-// Empty on purpose: it only exists to be augmented.
-// oxlint-disable-next-line typescript/no-empty-object-type, typescript/no-empty-interface
-interface Register {}
+type SimplifyEach<TValue> = TValue extends object ? Simplify<TValue> : TValue;
 
-type RegisteredConfig = Register extends {
-  config: infer TConfig extends Config;
-}
-  ? TConfig
-  : Config;
-
-type Output<TCollection> =
-  TCollection extends Collection<string, infer TSchema, infer TOutput>
+/** The type a collection's queries return, eg `InferDocument<typeof posts>`. */
+type InferDocument<TCollection> =
+  TCollection extends Collection<infer TSchema, infer TOutput>
     ? unknown extends TOutput
       ? Document<TSchema>
-      : Exclude<TOutput, Skipped>
+      : SimplifyEach<Exclude<TOutput, Skipped>>
     : never;
 
-type Content<TConfig extends Config = RegisteredConfig> = {
-  [
-    TCollection in TConfig["collections"][number] as TCollection["name"]
-  ]: CollectionQuery<Output<TCollection>>;
+type Content<TConfig extends Config = Config> = {
+  [TName in keyof TConfig["collections"]]: CollectionQuery<
+    InferDocument<TConfig["collections"][TName]>
+  >;
 };
 
 function defineCollection<
-  const TName extends string,
   TSchema extends StandardSchema,
   TOutput = Document<TSchema>,
->(
-  collection: Collection<TName, TSchema, TOutput>
-): Collection<TName, TSchema, TOutput> {
+>(collection: Collection<TSchema, TOutput>): Collection<TSchema, TOutput> {
   return collection;
 }
 
-function defineConfig<const TCollections extends readonly Collection[]>(
+function defineConfig<const TCollections extends Record<string, Collection>>(
   config: Config<TCollections>
 ): Config<TCollections> {
   return config;
@@ -150,10 +126,16 @@ export {
   defineConfig,
   type Document,
   type FileInfo,
-  type Register,
+  type InferDocument,
   Skipped,
   type StandardSchema,
   type TransformContext,
 };
 
-export type { CollectionQuery, FindManyArgs, OrderBy, Where } from "./query";
+export type {
+  CollectionQuery,
+  FindManyArgs,
+  OrderBy,
+  Select,
+  Where,
+} from "./query";

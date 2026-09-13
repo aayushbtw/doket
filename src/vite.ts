@@ -3,9 +3,10 @@ import path from "node:path";
 import type { Logger, Plugin, ViteDevServer } from "vite";
 import { runnerImport } from "vite";
 
-import { writeDeclaration } from "./dts";
+import { writeTypes } from "./generate";
 import type { Config } from "./index";
-import { loadCollection } from "./load";
+import { inCollection, loadCollection } from "./load";
+import type { FileCache } from "./load";
 import { serialize } from "./serialize";
 
 const MODULE_ID = "tomekit/content";
@@ -15,56 +16,109 @@ interface TomekitOptions {
   /** Path to the config file, relative to the Vite root. */
   config?: string;
   /**
-   * Where to write the declaration that types `tomekit/content`, relative to
-   * the Vite root. It must be inside your tsconfig's `include`. `false` skips
-   * it, and you register the config's type yourself.
+   * The folder generated types are written to, relative to the Vite root.
+   * Point `tomekit/content` at `<types>/content` in your tsconfig `paths`.
+   * `false` skips writing them.
    */
-  dts?: string | false;
+  types?: string | false;
 }
 
 function tomekit({
   config = "tomekit.config.ts",
-  dts = "tomekit-env.d.ts",
+  types = ".tomekit",
 }: TomekitOptions = {}): Plugin {
   let root = process.cwd();
   let logger: Logger | undefined;
+  let serving = false;
   let configPath = "";
-  // Every environment that imports the module shares one load per change.
+  let loadedConfig: Promise<Config> | undefined;
+  // Kept after a failed load, so fixing a dependency of the config still reloads.
+  let dependencies: string[] = [];
+  let current: Config | undefined;
+  const caches = new Map<string, FileCache>();
+  // Every environment that imports the module shares one build per change.
   let pending: Promise<string> | undefined;
-  let watched: string[] = [];
+
+  async function importConfig(): Promise<Config> {
+    const result = await runnerImport<{ default: Config }>(configPath, {
+      configFile: false,
+      logLevel: "error",
+      root,
+    });
+    dependencies = result.dependencies.map((file) => path.resolve(root, file));
+    return result.module.default;
+  }
 
   async function build() {
-    const { module, dependencies } = await runnerImport<{ default: Config }>(
-      configPath,
-      { configFile: false, logLevel: "error", root }
-    );
-    const { collections } = module.default;
-    watched = [
-      configPath,
-      ...dependencies.map((file) => path.resolve(root, file)),
-      ...collections.map((collection) =>
-        path.resolve(root, collection.directory)
-      ),
-    ];
+    loadedConfig ??= importConfig();
+    current = await loadedConfig.catch((error: unknown) => {
+      loadedConfig = undefined;
+      throw error;
+    });
 
-    const entries = await Promise.all(
-      collections.map(async (collection) => {
-        const loaded = await loadCollection(collection, root, (message) => {
-          logger?.warn(`[tomekit] ${message}`);
+    const collections = await Promise.all(
+      Object.entries(current.collections).map(async ([name, collection]) => {
+        const cache = caches.get(name) ?? new Map();
+        caches.set(name, cache);
+        const entries = await loadCollection(name, collection, root, {
+          cache,
+          // In dev a broken file is reported and left out, so the rest of the site keeps working.
+          onError: serving
+            ? (error) => logger?.error(`[tomekit] ${error.message}`)
+            : undefined,
+          warn: (message) => logger?.warn(`[tomekit] ${message}`),
         });
-        const pairs = loaded.map(
+        const pairs = entries.map(
           ({ output, slug }) => `[${JSON.stringify(slug)},${serialize(output)}]`
         );
-        return `${JSON.stringify(collection.name)}:createCollection([${pairs.join(",")}])`;
+        return {
+          code: `${JSON.stringify(name)}:createCollection([${pairs.join(",")}])`,
+          name,
+          slugs: entries.map((entry) => entry.slug),
+        };
       })
     );
 
+    if (types !== false) {
+      const directory = path.resolve(root, types);
+      if (await writeTypes(directory, configPath, collections)) {
+        logger?.info(
+          `[tomekit] wrote types to ${path.relative(root, directory)}`
+        );
+      }
+    }
+
     return `import { createCollection } from "tomekit/query";
-export const content = {${entries.join(",")}};
+export const content = {${collections.map((collection) => collection.code).join(",")}};
 `;
   }
 
-  function reload(server: ViteDevServer) {
+  /** What a changed file invalidates, if anything. */
+  function affected(file: string): "config" | "content" | undefined {
+    if (file === configPath || dependencies.includes(file)) {
+      return "config";
+    }
+    const matches = Object.values(current?.collections ?? {}).some(
+      (collection) => {
+        const relative = path.relative(
+          path.resolve(root, collection.directory),
+          file
+        );
+        return (
+          !relative.startsWith("..") &&
+          !path.isAbsolute(relative) &&
+          inCollection(collection, relative)
+        );
+      }
+    );
+    return matches ? "content" : undefined;
+  }
+
+  function reload(server: ViteDevServer, change: "config" | "content") {
+    if (change === "config") {
+      loadedConfig = undefined;
+      caches.clear();
+    }
     pending = undefined;
     for (const environment of Object.values(server.environments)) {
       const module = environment.moduleGraph.getModuleById(RESOLVED_ID);
@@ -76,26 +130,34 @@ export const content = {${entries.join(",")}};
   }
 
   return {
-    async configResolved(resolved) {
+    // Loads content up front, so types exist before anything imports it.
+    async buildStart() {
+      pending ??= build();
+      await pending.catch(() => {
+        pending = undefined;
+      });
+    },
+
+    // Pre-bundling would cache tomekit's runtime by version, so a linked or
+    // locally built tomekit could keep serving stale code, and the plugin's
+    // own module must never be bundled from its stub.
+    configEnvironment() {
+      return {
+        optimizeDeps: { exclude: ["tomekit", MODULE_ID, "tomekit/query"] },
+      };
+    },
+
+    configResolved(resolved) {
       ({ logger, root } = resolved);
+      serving = resolved.command === "serve";
       configPath = path.resolve(root, config);
-      if (dts !== false) {
-        const dtsPath = path.resolve(root, dts);
-        if (await writeDeclaration(configPath, dtsPath)) {
-          logger.info(`[tomekit] wrote ${path.relative(root, dtsPath)}`);
-        }
-      }
     },
 
     configureServer(server) {
       server.watcher.on("all", (_event, file) => {
-        if (
-          file === configPath ||
-          watched.some(
-            (entry) => file === entry || file.startsWith(`${entry}${path.sep}`)
-          )
-        ) {
-          reload(server);
+        const change = affected(file);
+        if (change !== undefined) {
+          reload(server, change);
         }
       });
     },
@@ -108,6 +170,11 @@ export const content = {${entries.join(",")}};
       if (id !== RESOLVED_ID) {
         return null;
       }
+      if (this.environment.name === "client") {
+        logger?.warn(
+          `[tomekit] ${MODULE_ID} was imported in the browser bundle, so every document ships to the client. Import it from server code only.`
+        );
+      }
       pending ??= build();
       try {
         return await pending;
@@ -115,7 +182,11 @@ export const content = {${entries.join(",")}};
         pending = undefined;
         throw error;
       } finally {
-        for (const file of watched) {
+        // For `vite build --watch`; the dev server watches through `configureServer`.
+        const directories = Object.values(current?.collections ?? {}).map(
+          (collection) => path.resolve(root, collection.directory)
+        );
+        for (const file of [configPath, ...dependencies, ...directories]) {
           this.addWatchFile(file);
         }
       }
