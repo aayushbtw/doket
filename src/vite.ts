@@ -87,7 +87,7 @@ export const collections = {${exports.join(",")}};
 
     async load(id) {
       if (id !== RESOLVED_ID) {
-        return;
+        return null;
       }
       pending ??= build();
       try {

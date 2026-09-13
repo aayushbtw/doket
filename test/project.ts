@@ -9,9 +9,13 @@ async function createProject(files: Record<string, string>) {
   const root = await mkdtemp(path.join(TMP, "project-"));
   await writeFiles(root, files);
   return {
-    cleanup: () => rm(root, { force: true, recursive: true }),
+    cleanup: async () => {
+      await rm(root, { force: true, recursive: true });
+    },
     root,
-    write: (more: Record<string, string>) => writeFiles(root, more),
+    write: async (more: Record<string, string>) => {
+      await writeFiles(root, more);
+    },
   };
 }
 

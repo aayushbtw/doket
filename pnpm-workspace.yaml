@@ -1,0 +1,18 @@
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.1
+  vitest: 4.1.11
+  vite-plus: 0.3.1
+overrides:
+  vite@*: "catalog:"
+  vitest@*: "catalog:"
+  # Match the oxlint and oxfmt that vite-plus bundles, so ultracite's presets
+  # type-check against the same rule schemas that run.
+  oxfmt: 0.66.0
+  oxlint: 1.81.0
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: "*"
+    vitest: "*"

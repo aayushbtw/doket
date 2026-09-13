@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { createServer } from "vite";
 import type { ViteDevServer } from "vite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { doket } from "../src/vite";
 import { createProject, SOURCE } from "./project";
@@ -29,6 +29,18 @@ interface Posts {
       get: (slug: string) => { title: string } | undefined;
     };
   };
+}
+
+function hasCollections(module: object): module is Posts {
+  return "collections" in module;
+}
+
+async function loadCollections(dev: ViteDevServer) {
+  const module = await dev.ssrLoadModule("virtual:doket");
+  if (!hasCollections(module)) {
+    throw new Error("virtual:doket has no collections export");
+  }
+  return module.collections;
 }
 
 let server: ViteDevServer | undefined;
@@ -58,7 +70,7 @@ describe("doket()", () => {
       "content/posts/hello.md": "---\ntitle: Hello\ndate: 2026-03-27\n---\n",
     });
 
-    const { collections } = (await dev.ssrLoadModule("virtual:doket")) as Posts;
+    const collections = await loadCollections(dev);
 
     expect(collections.posts.all()).toHaveLength(1);
     expect(collections.posts.get("hello")?.title).toBe("Hello");
@@ -81,7 +93,7 @@ describe("doket()", () => {
       path.join(project.root, "content/posts/later.md")
     );
 
-    const { collections } = (await dev.ssrLoadModule("virtual:doket")) as Posts;
+    const collections = await loadCollections(dev);
     expect(collections.posts.get("later")?.title).toBe("Later");
   });
 });

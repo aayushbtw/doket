@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 
 import { defineCollection } from "../src/index";
@@ -6,7 +6,9 @@ import { loadCollection } from "../src/load";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
-afterEach(() => cleanup?.());
+afterEach(async () => {
+  await cleanup?.();
+});
 
 const posts = defineCollection({
   directory: "content/posts",
@@ -57,9 +59,10 @@ describe("loadCollection", () => {
 
     const entries = await loadCollection(loose, root);
 
-    expect(
-      entries.map((entry) => (entry.output as { content: string }).content)
-    ).toStrictEqual(["Only body", "No frontmatter"]);
+    expect(entries.map((entry) => entry.output)).toMatchObject([
+      { content: "Only body" },
+      { content: "No frontmatter" },
+    ]);
   });
 
   it("runs the transform on the validated document", async () => {

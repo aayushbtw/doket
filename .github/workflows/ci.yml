@@ -10,29 +10,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: voidzero-dev/setup-vp@v1.20.0
         with:
           node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm typecheck
-      - run: pnpm build
+          cache: true
+          run-install: true
+      - run: vp check
+      - run: vp pack
 
-  # The lowest Node the package supports, apart from the lint job: oxlint and
-  # oxfmt need Node 22.18 to read their TypeScript configs.
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # 22.17.0 is the lowest Node the package supports.
         node: [22.17.0, 24]
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: voidzero-dev/setup-vp@v1.20.0
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+          cache: true
+          run-install: true
+      - run: vp test run

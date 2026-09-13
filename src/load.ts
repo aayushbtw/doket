@@ -24,7 +24,7 @@ async function loadCollection(
   }
   files.sort();
 
-  return Promise.all(
+  return await Promise.all(
     files.map(async (file) => {
       const filePath = path.relative(root, path.join(directory, file));
       try {
@@ -39,7 +39,8 @@ async function loadCollection(
           : document;
         return { output, slug: document._meta.slug };
       } catch (error) {
-        throw new Error(`${filePath}: ${(error as Error).message}`, {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`${filePath}: ${message}`, {
           cause: error,
         });
       }
@@ -56,7 +57,8 @@ async function loadDocument(
   const source = await readFile(path.join(directory, file), "utf-8");
   const match = FRONTMATTER.exec(source);
   const frontmatter = match?.groups?.data;
-  const data: unknown = frontmatter ? (parseYaml(frontmatter) ?? {}) : {};
+  const data: unknown =
+    frontmatter === undefined ? {} : (parseYaml(frontmatter) ?? {});
 
   const result = await collection.schema["~standard"].validate(data);
   if (result.issues) {
@@ -66,21 +68,28 @@ async function loadDocument(
           const key = issue.path
             ?.map((part) => (typeof part === "object" ? part.key : part))
             .join(".");
-          return key ? `${key}: ${issue.message}` : issue.message;
+          return key === undefined || key === ""
+            ? issue.message
+            : `${key}: ${issue.message}`;
         })
         .join("; ")
     );
   }
 
+  const { value } = result;
+  if (typeof value !== "object" || value === null) {
+    throw new Error("the schema must produce an object");
+  }
+
   return {
-    ...(result.value as object),
+    ...value,
     _meta: {
       fileName: path.basename(file),
       filePath,
       slug: file.split(path.sep).join("/").replace(EXTENSION, ""),
     },
     content: match ? source.slice(match[0].length) : source,
-  } as Document<Collection["schema"]>;
+  };
 }
 
 export { loadCollection };

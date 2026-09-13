@@ -36,25 +36,22 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown",
-    "check": "ultracite check",
-    "fix": "ultracite fix",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm check && pnpm typecheck && pnpm test && pnpm build"
+    "build": "vp pack",
+    "check": "vp check",
+    "fix": "vp check --fix",
+    "prepublishOnly": "vp check && vp test run && vp pack",
+    "test": "vp test run"
   },
   "dependencies": {
     "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",
-    "oxfmt": "^0.67.0",
-    "oxlint": "^1.82.0",
-    "tsdown": "^0.23.0",
     "typescript": "^7.0.2",
-    "ultracite": "^7.11.1",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.0",
+    "ultracite": "7.11.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:",
     "zod": "^4.6.2"
   },
   "peerDependencies": {
