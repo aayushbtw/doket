@@ -64,10 +64,7 @@ export default defineConfig({
 ```json
 {
   "compilerOptions": {
-    "paths": {
-      "tomekit/content": ["./.tomekit/content"],
-      "tomekit/content/*": ["./.tomekit/content/*"]
-    }
+    "paths": { "tomekit/content*": ["./.tomekit/content*"] }
   }
 }
 ```
