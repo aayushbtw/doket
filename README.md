@@ -155,7 +155,7 @@ content.posts.findMany({ orderBy: [{ featured: "desc" }, { title: "asc" }] });
 
 ## Collection options
 
-Each key in `collections` is the name you query it by, eg `posts` for `content.posts`. Wrap each one in `defineCollection` so `transform` knows your schema's types.
+Each key in `collections` is the name you query it by, eg `posts` for `content.posts`. Write each one inline, or wrap it in `defineCollection` to define it in its own file. Either way `transform` knows your schema's types.
 
 | Option | Required |  |
 | --- | --- | --- |

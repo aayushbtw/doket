@@ -112,9 +112,33 @@ function defineCollection<
   return collection;
 }
 
-function defineConfig<const TCollections extends Record<string, Collection>>(
-  config: Config<TCollections>
-): Config<TCollections> {
+type InferredCollections<
+  TSchemas extends Record<string, StandardSchema>,
+  TOutputs extends { [TName in keyof TSchemas]: unknown },
+> = {
+  [TName in keyof TSchemas]: Collection<
+    TSchemas[TName],
+    Awaited<TOutputs[TName]>
+  >;
+};
+
+// Two mapped types so schemas are inferred before each `transform` is
+// contextually typed; one mapped type loses the output types.
+function defineConfig<
+  TSchemas extends Record<string, StandardSchema>,
+  TOutputs extends { [TName in keyof TSchemas]: unknown },
+>(config: {
+  collections: {
+    [TName in keyof TSchemas]: Omit<Collection<TSchemas[TName]>, "transform">;
+  } & {
+    [TName in keyof TOutputs]: {
+      transform?: (
+        document: Document<TSchemas[TName & keyof TSchemas]>,
+        context: TransformContext
+      ) => TOutputs[TName];
+    };
+  };
+}): Config<InferredCollections<TSchemas, TOutputs>> {
   return config;
 }
 

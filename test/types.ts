@@ -77,3 +77,37 @@ export function titles<TDocument extends { title: string }>(
 ): string[] {
   return collection.findMany().map((document) => document.title);
 }
+
+const inline = defineConfig({
+  collections: {
+    drafts: {
+      directory: "content/drafts",
+      schema: z.object({ title: z.string() }),
+      transform: async (document, { skip }) => {
+        await Promise.resolve();
+        return document.title === "" ? skip() : { heading: document.title };
+      },
+    },
+    notes: defineCollection({
+      directory: "content/notes",
+      schema: z.object({ order: z.number() }),
+    }),
+    pages: {
+      directory: "content/pages",
+      schema: z.object({ order: z.number() }),
+    },
+  },
+});
+
+declare const inlineContent: Content<typeof inline>;
+
+export const heading: string | undefined =
+  inlineContent.drafts.findFirst()?.heading;
+export const pageOrder: number | undefined =
+  inlineContent.pages.findFirst()?.order;
+export const noteSlug: string | undefined =
+  inlineContent.notes.findFirst()?.slug;
+
+const draft = inlineContent.drafts.findFirst();
+// @ts-expect-error a transform's output replaces the document
+export type DraftTitle = NonNullable<typeof draft>["title"];
