@@ -25,7 +25,7 @@ collections.posts.get("hello-world"); // one post, or undefined
 pnpm add doket
 ```
 
-Requires Node 22 or later and Vite 6.1 or later.
+Requires Node 22.17 or later and Vite 6.4 or later.
 
 ## Setup
 
@@ -131,10 +131,14 @@ In dev, fix the file and doket reloads.
 doket({ config: "doket.config.ts" });
 ```
 
-| Option | Default | |
+| Option | Default |  |
 | --- | --- | --- |
 | `config` | `"doket.config.ts"` | Path to the config file, relative to the Vite root |
 
 ## Not in scope
 
 doket stays small on purpose. It does not render MDX, process images, or resolve references between collections. Those belong in your transform or in a tool built for them.
+
+## License
+
+MIT
