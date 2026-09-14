@@ -164,7 +164,7 @@ describe("loadCollection", () => {
 
     expect(entries).toStrictEqual([
       {
-        code: '{["title"]:"Hello"}',
+        code: 'JSON.parse("{\\"title\\":\\"Hello\\"}")',
         filePath: "content/posts/hello.md",
         output: { title: "Hello" },
         slug: "hello",

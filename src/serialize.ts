@@ -1,9 +1,20 @@
 const IDENTIFIER = /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u;
 
+interface WriteState {
+  /** Whether `JSON.parse` would rebuild the value exactly. */
+  json: boolean;
+}
+
 // JavaScript source rather than JSON, so values JSON would drop or change
-// (Dates, Maps, NaN, `undefined`) come back as they went in.
+// (Dates, Maps, NaN, `undefined`) come back as they went in. Plain JSON data
+// is emitted as `JSON.parse("...")` instead, which V8 loads about twice as
+// fast as the same object literal.
 function serialize(value: unknown): string {
-  return write(value, "", []);
+  const state: WriteState = { json: true };
+  const source = write(value, "", [], state);
+  return state.json
+    ? `JSON.parse(${JSON.stringify(JSON.stringify(value))})`
+    : source;
 }
 
 function kind(value: object): string {
@@ -21,7 +32,10 @@ function fail(what: string, at: string): never {
   );
 }
 
-function number(value: number): string {
+function number(value: number, state: WriteState): string {
+  if (!Number.isFinite(value) || Object.is(value, -0)) {
+    state.json = false;
+  }
   if (Number.isNaN(value)) {
     return "NaN";
   }
@@ -31,12 +45,18 @@ function number(value: number): string {
   return Object.is(value, -0) ? "-0" : String(value);
 }
 
-function write(value: unknown, at: string, parents: object[]): string {
+function write(
+  value: unknown,
+  at: string,
+  parents: object[],
+  state: WriteState
+): string {
   if (value === undefined) {
+    state.json = false;
     return "undefined";
   }
   if (typeof value === "number") {
-    return number(value);
+    return number(value, state);
   }
   if (
     typeof value === "function" ||
@@ -54,11 +74,20 @@ function write(value: unknown, at: string, parents: object[]): string {
 
   const inner = [...parents, value];
   function item(entry: unknown, key: string): string {
-    return write(entry, key, inner);
+    return write(entry, key, inner, state);
+  }
+
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (
+    prototype !== Object.prototype &&
+    prototype !== null &&
+    !Array.isArray(value)
+  ) {
+    state.json = false;
   }
 
   if (value instanceof Date) {
-    return `new Date(${number(value.getTime())})`;
+    return `new Date(${number(value.getTime(), state)})`;
   }
   if (value instanceof URL) {
     return `new URL(${JSON.stringify(value.href)})`;
@@ -86,7 +115,6 @@ function write(value: unknown, at: string, parents: object[]): string {
     return `[${entries.join(",")}]`;
   }
 
-  const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     fail(kind(value), at);
   }

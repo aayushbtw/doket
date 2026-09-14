@@ -45,6 +45,24 @@ describe("serialize", () => {
     expect(await evaluate(serialize(value))).toStrictEqual(value);
   });
 
+  it("emits plain JSON data through JSON.parse, which loads faster", async () => {
+    const value = { list: [1, "two", true, null], nested: { quote: 'a "b"' } };
+    const source = serialize(value);
+    expect(source).toMatch(/^JSON\.parse\(/u);
+    expect(await evaluate(source)).toStrictEqual(value);
+  });
+
+  it("falls back to a literal when JSON.parse would change the value", () => {
+    for (const value of [
+      { at: new Date(0) },
+      { missing: undefined },
+      [-0],
+      [Number.NaN],
+    ]) {
+      expect(serialize(value)).not.toMatch(/^JSON\.parse/u);
+    }
+  });
+
   it("names the key path of values that cannot become source", () => {
     expect(() => serialize({ a: [{ fn: () => 1 }] })).toThrow(
       "cannot write a function at a[0].fn into content"
