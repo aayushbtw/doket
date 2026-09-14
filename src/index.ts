@@ -1,4 +1,5 @@
 import type { Prettify } from "./query";
+import type { Skipped } from "./skipped";
 import type { ContentValue } from "./value";
 
 /**
@@ -66,22 +67,6 @@ interface Source<TMetadata = unknown> {
    * `guides/setup`. A `slug` that is not a non-empty string fails the file.
    */
   slug: string;
-}
-
-const REASON = Symbol("reason");
-
-/**
- * Returned from `transform` to leave a file out of its collection. Create
- * one with `skip()` from {@link TransformContext}.
- */
-// Only a symbol key, so no plain object matches it by shape, and the editor
-// suggests nothing from it inside the object a transform returns.
-class Skipped {
-  readonly [REASON]: string | undefined;
-
-  constructor(reason?: string) {
-    this[REASON] = reason;
-  }
 }
 
 /** The second argument to `transform`. */
@@ -317,7 +302,7 @@ export {
   defineConfig,
   type FileInfo,
   type InferDocument,
-  Skipped,
+  type Skipped,
   type Source,
   type StandardSchema,
   type TransformContext,

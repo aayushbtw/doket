@@ -4,11 +4,11 @@ import path from "node:path";
 
 import { assertTransformResult, buildDocument } from "./document";
 import { ContentError } from "./errors";
-import { Skipped } from "./index";
 import type { CollectionConfig } from "./index";
 import { parse } from "./parse";
 import type { ParseResult } from "./parse";
 import { serialize } from "./serialize";
+import { Skipped } from "./skipped";
 import type { ContentValue } from "./value";
 
 const DEFAULT_INCLUDE = "**/*.md";
