@@ -18,6 +18,11 @@ function typeName(name: string): string {
   return /^\d/u.test(pascal) ? `_${pascal}` : pascal;
 }
 
+/** A collection name that is safe inside a generated doc comment. */
+function docName(name: string): string {
+  return `\`${name.replaceAll("*/", "*\\/")}\``;
+}
+
 function importPath(from: string, to: string): string {
   const relative = path
     .relative(from, to)
@@ -40,10 +45,13 @@ function collectionFile(
 import type { Collection, InferDocument, WithSlug } from "tomekit";
 import type config from ${JSON.stringify(configImport)};
 
+/** Every slug in the ${docName(name)} collection. */
 export type ${type}Slug = ${slugType};
 
+/** A document in the ${docName(name)} collection. */
 export type ${type} = WithSlug<InferDocument<(typeof config)["collections"][${JSON.stringify(name)}]>, ${type}Slug>;
 
+/** The ${docName(name)} collection. */
 declare const collection: Collection<${type}, ${type}Slug>;
 export default collection;
 `;
@@ -60,7 +68,8 @@ function indexFile(collections: readonly GeneratedCollection[]): string {
   const entries = collections
     .map(
       ({ name }) =>
-        `  ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./content/${name}`)}).default;`
+        `  /** The ${docName(name)} collection. */
+  ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./content/${name}`)}).default;`
     )
     .join("\n");
   const union = types.length === 0 ? "never" : types.join(" | ");
@@ -71,6 +80,7 @@ ${reexports}
 /** A document from any collection. */
 export type AnyDocument = ${union};
 
+/** Every collection in your config, keyed by name. */
 export declare const content: {
 ${entries}
 };

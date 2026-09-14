@@ -8,13 +8,20 @@ import type { Build } from "./loader";
 
 const RESOLVED_ID = `\0${MODULE_ID}`;
 
+/** Options for the {@link tomekit} Vite plugin. */
 interface TomekitOptions {
-  /** Path to the config file, relative to the Vite root. */
+  /**
+   * Path to the config file, relative to the Vite root.
+   *
+   * @default "tomekit.config.ts"
+   */
   config?: string;
   /**
-   * The folder generated types are written to, relative to the Vite root.
-   * Point `tomekit/content` at `<types>/content` in your tsconfig `paths`.
-   * `false` skips writing them.
+   * The folder generated types are written to, relative to the Vite root, or
+   * `false` to skip them. Map `tomekit/content*` to `<types>/content*` in your
+   * tsconfig `paths`.
+   *
+   * @default ".tomekit"
    */
   types?: string | false;
 }
@@ -25,6 +32,19 @@ function summary(errors: readonly ContentError[]): string {
   return [heading, ...errors.map((error) => error.message)].join("\n");
 }
 
+/**
+ * The Vite plugin that loads your collections and serves them as
+ * `tomekit/content`. Content is validated at build time, so a broken file
+ * fails `vite build`; in dev it is reported and left out.
+ *
+ * @example
+ * ```ts
+ * // vite.config.ts
+ * import { tomekit } from "tomekit/vite";
+ *
+ * export default defineConfig({ plugins: [tomekit()] });
+ * ```
+ */
 function tomekit({
   config = "tomekit.config.ts",
   types = ".tomekit",
