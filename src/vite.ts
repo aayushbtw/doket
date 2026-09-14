@@ -7,7 +7,6 @@ import { writeTypes } from "./generate";
 import type { Config } from "./index";
 import { inCollection, loadCollection } from "./load";
 import type { FileCache } from "./load";
-import { serialize } from "./serialize";
 
 const MODULE_ID = "tomekit/content";
 const RESOLVED_ID = `\0${MODULE_ID}`;
@@ -74,7 +73,7 @@ function tomekit({
           warn: (message) => logger?.warn(`[tomekit] ${message}`),
         });
         const pairs = entries.map(
-          ({ output, slug }) => `[${JSON.stringify(slug)},${serialize(output)}]`
+          ({ code, slug }) => `[${JSON.stringify(slug)},${code}]`
         );
         return {
           code: `import { createCollection } from "tomekit/query";

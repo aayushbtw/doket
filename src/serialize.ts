@@ -1,29 +1,104 @@
-// JSON with Dates and `undefined` kept, since the output is JavaScript source
-// rather than a JSON payload.
+const IDENTIFIER = /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u;
+
+// JavaScript source rather than JSON, so values JSON would drop or change
+// (Dates, Maps, NaN, `undefined`) come back as they went in.
 function serialize(value: unknown): string {
+  return write(value, "", []);
+}
+
+function kind(value: object): string {
+  const { constructor }: { constructor: unknown } = value;
+  const name = typeof constructor === "function" ? constructor.name : "";
+  return typeof name === "string" && name !== ""
+    ? `an instance of ${name}`
+    : "an object";
+}
+
+function fail(what: string, at: string): never {
+  const where = at === "" ? "" : ` at ${at}`;
+  throw new TypeError(
+    `cannot write ${what}${where} into content. Return plain data, strings, numbers, Dates, Maps, Sets, URLs or RegExps from transform.`
+  );
+}
+
+function number(value: number): string {
+  if (Number.isNaN(value)) {
+    return "NaN";
+  }
+  if (!Number.isFinite(value)) {
+    return value > 0 ? "Infinity" : "-Infinity";
+  }
+  return Object.is(value, -0) ? "-0" : String(value);
+}
+
+function write(value: unknown, at: string, parents: object[]): string {
   if (value === undefined) {
     return "undefined";
   }
-  if (value instanceof Date) {
-    return `new Date(${value.getTime()})`;
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(serialize).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    const entries = Object.entries(value).map(
-      ([key, entry]) => `${JSON.stringify(key)}:${serialize(entry)}`
-    );
-    return `{${entries.join(",")}}`;
+  if (typeof value === "number") {
+    return number(value);
   }
   if (
     typeof value === "function" ||
     typeof value === "symbol" ||
     typeof value === "bigint"
   ) {
-    throw new TypeError(`Cannot serialize a ${typeof value} into content`);
+    fail(`a ${typeof value}`, at);
   }
-  return JSON.stringify(value);
+  if (typeof value !== "object" || value === null) {
+    return JSON.stringify(value);
+  }
+  if (parents.includes(value)) {
+    fail("a circular reference", at);
+  }
+
+  const inner = [...parents, value];
+  function item(entry: unknown, key: string): string {
+    return write(entry, key, inner);
+  }
+
+  if (value instanceof Date) {
+    return `new Date(${number(value.getTime())})`;
+  }
+  if (value instanceof URL) {
+    return `new URL(${JSON.stringify(value.href)})`;
+  }
+  if (value instanceof RegExp) {
+    return `new RegExp(${JSON.stringify(value.source)},${JSON.stringify(value.flags)})`;
+  }
+  if (value instanceof Map) {
+    const pairs = [...value].map(
+      ([key, entry], index) =>
+        `[${item(key, `${at}[${index}][0]`)},${item(entry, `${at}[${index}][1]`)}]`
+    );
+    return `new Map([${pairs.join(",")}])`;
+  }
+  if (value instanceof Set) {
+    const entries = [...value].map((entry, index) =>
+      item(entry, `${at}[${index}]`)
+    );
+    return `new Set([${entries.join(",")}])`;
+  }
+  if (Array.isArray(value)) {
+    const entries = Array.from(value, (entry, index) =>
+      item(entry, `${at}[${index}]`)
+    );
+    return `[${entries.join(",")}]`;
+  }
+
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    fail(kind(value), at);
+  }
+  const entries = Object.entries(value).map(([key, entry]) => {
+    let path = `${at}[${JSON.stringify(key)}]`;
+    if (IDENTIFIER.test(key)) {
+      path = at === "" ? key : `${at}.${key}`;
+    }
+    // Computed, so a `__proto__` key stays a key instead of setting the prototype.
+    return `[${JSON.stringify(key)}]:${item(entry, path)}`;
+  });
+  return `{${entries.join(",")}}`;
 }
 
 export { serialize };

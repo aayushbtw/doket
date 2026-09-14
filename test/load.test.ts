@@ -40,7 +40,9 @@ describe("loadCollection", () => {
 
     const entries = await loadCollection("posts", posts, root);
 
-    expect(entries).toStrictEqual([
+    expect(
+      entries.map(({ filePath, output, slug }) => ({ filePath, output, slug }))
+    ).toStrictEqual([
       {
         filePath: "content/posts/b.md",
         output: {
@@ -163,6 +165,7 @@ describe("loadCollection", () => {
 
     expect(entries).toStrictEqual([
       {
+        code: '{["title"]:"Hello"}',
         filePath: "content/posts/hello.md",
         output: { title: "Hello" },
         slug: "hello",
@@ -306,6 +309,23 @@ describe("loadCollection", () => {
     expect(outputs(entries)).toMatchObject([{ title: "Fine" }]);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/^content\/posts\/broken\.md: title: /u);
+  });
+
+  it("names the file and key of output that cannot be written", async () => {
+    const root = await project({
+      "content/posts/a.md": "---\ntitle: A\n---\n",
+    });
+    class Author {
+      name = "Ada";
+    }
+    const withClass = defineCollection({
+      ...posts,
+      transform: () => ({ meta: { list: [new Author()] } }),
+    });
+
+    await expect(loadCollection("posts", withClass, root)).rejects.toThrow(
+      "content/posts/a.md: cannot write an instance of Author at meta.list[0] into content"
+    );
   });
 
   it("reruns the transform only for files that changed", async () => {

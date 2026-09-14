@@ -23,8 +23,41 @@ describe("serialize", () => {
     expect(await evaluate(serialize(value))).toStrictEqual(value);
   });
 
-  it("rejects values that cannot become source", () => {
-    expect(() => serialize({ fn: () => 1 })).toThrow("function");
-    expect(() => serialize(1n)).toThrow("bigint");
+  it("keeps numbers JSON cannot represent", async () => {
+    const value = [Number.NaN, Infinity, -Infinity, -0];
+    expect(await evaluate(serialize(value))).toStrictEqual(value);
+  });
+
+  it("keeps maps, sets, URLs and regular expressions", async () => {
+    const value = {
+      map: new Map<unknown, unknown>([
+        ["a", 1],
+        [2, new Set(["b"])],
+      ]),
+      pattern: /a\/b/giu,
+      url: new URL("https://example.com/a?b=c"),
+    };
+    expect(await evaluate(serialize(value))).toStrictEqual(value);
+  });
+
+  it("keeps a __proto__ key as a key", async () => {
+    const value: unknown = JSON.parse('{"__proto__":{"polluted":true}}');
+    expect(await evaluate(serialize(value))).toStrictEqual(value);
+  });
+
+  it("names the key path of values that cannot become source", () => {
+    expect(() => serialize({ a: [{ fn: () => 1 }] })).toThrow(
+      "cannot write a function at a[0].fn into content"
+    );
+    expect(() => serialize(1n)).toThrow("cannot write a bigint into content");
+    expect(() => serialize({ "a-b": new URLSearchParams() })).toThrow(
+      'cannot write an instance of URLSearchParams at ["a-b"]'
+    );
+  });
+
+  it("rejects circular references", () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+    expect(() => serialize(value)).toThrow("circular reference at self");
   });
 });

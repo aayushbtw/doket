@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 
 import { Skipped } from "./index";
 import type { CollectionConfig, Document } from "./index";
+import { serialize } from "./serialize";
 
 const FRONTMATTER = /^---\r?\n(?:(?<data>[\s\S]*?)\r?\n)?---(?:\r?\n|$)/u;
 const EXTENSION = /\.[^./]+$/u;
@@ -13,6 +14,8 @@ const DEFAULT_INCLUDE = "**/*.md";
 const RESERVED = ["content", "file"];
 
 interface Entry {
+  /** `output` as JavaScript source. */
+  code: string;
   filePath: string;
   output: unknown;
   /** Computed before the transform, so lookups work whatever it returns. */
@@ -189,7 +192,9 @@ async function loadFile(
       `transform changed slug "${document.slug}" to ${JSON.stringify(output.slug)}. Set \`slug\` in the frontmatter instead, so lookups and types agree.`
     );
   }
-  const entry = { filePath, output, slug: document.slug };
+  // Inside the per-file try, so a value that cannot be written names its file.
+  const code = output instanceof Skipped ? "" : serialize(output);
+  const entry = { code, filePath, output, slug: document.slug };
   cache?.set(file, { entry, hash: sourceHash });
   return entry;
 }
