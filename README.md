@@ -167,7 +167,7 @@ A file without frontmatter is validated as an empty object. Frontmatter named `c
 
 ## Transform
 
-`transform` runs once per file at build time and decides what your app receives. Use it to render Markdown, derive fields, or drop what you do not need. The result must be plain data: objects, arrays, strings, numbers, booleans, `null`, `undefined` and `Date`.
+`transform` runs once per file at build time and decides what your app receives. Use it to render Markdown, derive fields, or drop what you do not need. The result must be data: plain objects, arrays, strings, numbers, booleans, `null`, `undefined`, `Date`, `Map`, `Set`, `URL` and `RegExp`. Anything else, eg a class instance or a function, fails that file with the key it was found at.
 
 ```ts
 import { marked } from "marked";
@@ -217,19 +217,22 @@ transform: (document, { skip }) =>
 
 ## Errors
 
-A file that fails validation fails the build, and the message names the file and the field:
+A build lists every broken file at once, one problem per line, pointing at the line and column in the file:
 
 ```
-content/posts/hello.md: title: Invalid input: expected string, received undefined
+2 content files have errors:
+content/posts/hello.md:2:1: title: Invalid input: expected string, received undefined
+content/posts/setup.md:4:5: tags.1: Invalid input: expected string, received number
 ```
 
-In dev, the same error is logged and only that file is left out, so the rest of your site keeps working while you fix it. Two files with the same slug are handled the same way.
+In dev, the same errors are logged and shown in Vite's error overlay, and only those files are left out, so the rest of your site keeps working while you fix them. Two files with the same slug, and a transform that throws, are handled the same way.
 
 tomekit also warns when:
 
-- a collection's `directory` does not exist, or no files in it match `include`
+- a collection's `directory` does not exist, or no files in it match `include`, so the collection is empty
 - frontmatter uses `content` or `file`, which tomekit sets
 - `tomekit/content` or a collection module is imported in the browser bundle, which would ship its documents to the client
+- `tsconfig.json` has no `tomekit/content*` path, so imports have no collection types
 
 While the dev server runs, saving a file only re-runs that file's transform, and files that do not match a collection's `include` never trigger a reload.
 
