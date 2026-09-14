@@ -338,7 +338,8 @@ describe("loadCollection", () => {
       cache,
     });
 
-    expect(transformed).toStrictEqual(["a", "b", "b"]);
+    // Files load in parallel, so only which ones reran is stable, not their order.
+    expect(transformed.toSorted()).toStrictEqual(["a", "b", "b"]);
     expect(outputs(entries)).toStrictEqual([{ title: "A" }, { title: "B2" }]);
   });
 });

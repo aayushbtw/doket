@@ -14,9 +14,10 @@ afterEach(async () => {
   await cleanup?.();
 });
 
+// Imports the source, since "tomekit" would resolve to dist, which may not be built yet.
 const config = `
 import { z } from "zod";
-import { defineCollection, defineConfig } from "tomekit";
+import { defineCollection, defineConfig } from ${JSON.stringify(SOURCE.replace(/\.ts$/u, ""))};
 
 export default defineConfig({
   collections: {
