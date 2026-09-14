@@ -1,5 +1,6 @@
 import { UnserializableValueError } from "./unserializable-value-error";
 
+/** Content holds an instance of a class, which cannot be written into a module. */
 class UnserializableInstanceError extends UnserializableValueError {
   override name = "UnserializableInstanceError";
 

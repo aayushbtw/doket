@@ -4,6 +4,7 @@ import { TomekitError } from "./tomekit-error";
 /** Every broken file in a build, one per line. */
 class BrokenContentError extends TomekitError {
   override name = "BrokenContentError";
+  /** One per problem, so a file with two problems appears twice. */
   readonly errors: readonly ContentError[];
 
   constructor(errors: readonly ContentError[]) {

@@ -296,3 +296,21 @@ export {
 };
 
 export type { Collection } from "./query";
+
+export {
+  BrokenContentError,
+  ConfigError,
+  ConfigLoadError,
+  ContentError,
+  InvalidConfigError,
+  MissingDefaultExportError,
+  MissingPluginError,
+  PluginError,
+  PluginNotReadyError,
+  SlugChangedError,
+  TomekitError,
+  TransformError,
+  UnknownCollectionError,
+  UnserializableInstanceError,
+  UnserializableValueError,
+} from "./errors";

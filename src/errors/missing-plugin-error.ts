@@ -1,5 +1,6 @@
 import { PluginError } from "./plugin-error";
 
+/** `tomekit/content` was imported without the `tomekit()` Vite plugin. */
 class MissingPluginError extends PluginError {
   override name = "MissingPluginError";
 

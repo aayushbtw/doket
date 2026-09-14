@@ -236,6 +236,8 @@ tomekit also warns when:
 
 A config that fails to load, eg a typo in `tomekit.config.ts`, fails `vite build` and is logged as soon as the dev server starts.
 
+Every error tomekit throws extends `TomekitError`, and each class is exported from `tomekit`, so you can check `instanceof BrokenContentError` rather than the message. When you call `build()` from code, Vite wraps plugin errors, so look for tomekit's in the `errors` array of what it throws.
+
 While the dev server runs, saving a file only re-runs that file's transform and rewrites the types right away, without waiting for a page to load. Files that do not match a collection's `include` never trigger a reload.
 
 ## Options

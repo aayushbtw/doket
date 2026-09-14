@@ -1,5 +1,6 @@
 import { TransformError } from "./transform-error";
 
+/** Content holds a value that cannot be written into a module, eg a function or a cycle. */
 class UnserializableValueError extends TransformError {
   override name = "UnserializableValueError";
 

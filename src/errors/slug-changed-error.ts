@@ -1,6 +1,7 @@
 import type { ContentValue } from "../value";
 import { TransformError } from "./transform-error";
 
+/** A `transform` returned a different `slug` than the document's. */
 class SlugChangedError extends TransformError {
   override name = "SlugChangedError";
 

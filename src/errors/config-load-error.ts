@@ -1,5 +1,6 @@
 import { ConfigError } from "./config-error";
 
+/** Importing the config threw, eg on a syntax error. The original error is the `cause`. */
 class ConfigLoadError extends ConfigError {
   override name = "ConfigLoadError";
 

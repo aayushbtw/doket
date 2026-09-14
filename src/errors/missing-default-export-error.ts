@@ -1,5 +1,6 @@
 import { ConfigError } from "./config-error";
 
+/** The config file has no default export, or it is not a config. */
 class MissingDefaultExportError extends ConfigError {
   override name = "MissingDefaultExportError";
 

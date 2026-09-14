@@ -41,6 +41,15 @@ describe("errors", () => {
     }
   });
 
+  it("exports every error class from tomekit", async () => {
+    const errors = await import("../src/errors");
+    const tomekit = await import("../src/index");
+
+    expect(Object.keys(tomekit)).toEqual(
+      expect.arrayContaining(Object.keys(errors))
+    );
+  });
+
   it("keeps what caused a config to fail to load", () => {
     const cause = new SyntaxError("Unexpected token");
     const error = new ConfigLoadError("tomekit.config.ts", cause);
