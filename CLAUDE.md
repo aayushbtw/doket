@@ -2,7 +2,7 @@
 
 Typed content collections for Vite. Content is parsed and validated at build time and served as generated modules, so nothing is parsed at runtime.
 
-Goal: the best API and DX, fully typed, fast. The one real consumer is `../portfolio` (it depends on `file:../tomekit`).
+Goal: the best API and DX, fully typed, fast. The one real consumer is `../portfolio` (it depends on the published `tomekit` from npm).
 
 ## Commands
 
@@ -12,7 +12,7 @@ pnpm test    # vitest
 pnpm build   # vp pack → dist
 ```
 
-Before calling a change done, run `pnpm check` and `pnpm test`. For changes to runtime output or generated types, also check the portfolio: `pnpm build`, then in `../portfolio` run `pnpm install && pnpm exec vite build && pnpm exec tsc --noEmit`. Its uncommitted files belong to the user, so never revert them.
+Before calling a change done, run `pnpm check` and `pnpm test`. For changes to runtime output or generated types, also check the portfolio: `pnpm build`, then in `../portfolio` temporarily set the `tomekit` dependency to `file:../tomekit` and run `pnpm install && pnpm exec vite build && pnpm exec tsc --noEmit`. Afterwards restore its `package.json` and `pnpm-lock.yaml` to what they were, and run `pnpm install` again. Its uncommitted files belong to the user, so never revert them.
 
 ## Structure
 
