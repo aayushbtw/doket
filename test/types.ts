@@ -196,3 +196,11 @@ export const stringConfig = defineConfig({
     },
   },
 });
+
+// Globs suggest common patterns but accept any string.
+export const globbed = defineCollection({
+  directory: "content/notes",
+  exclude: ["drafts/**"],
+  include: "**/*.markdown",
+  schema: z.object({}),
+});

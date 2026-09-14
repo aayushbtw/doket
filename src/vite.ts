@@ -20,7 +20,7 @@ interface TomekitOptions {
    *
    * @default "tomekit.config.ts"
    */
-  config?: string;
+  config?: "tomekit.config.ts" | (string & Record<never, never>);
   /**
    * The folder generated types are written to, relative to the Vite root, or
    * `false` to skip them. Map `tomekit/content*` to `<types>/content*` in your
@@ -28,7 +28,7 @@ interface TomekitOptions {
    *
    * @default ".tomekit"
    */
-  types?: string | false;
+  types?: ".tomekit" | false | (string & Record<never, never>);
 }
 
 /**

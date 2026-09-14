@@ -103,6 +103,13 @@ interface TransformContext<TName extends string = string> {
   skip: (reason?: string) => Skipped;
 }
 
+/**
+ * A glob pattern. Suggests common ones and accepts any string.
+ *
+ * @internal
+ */
+type Glob = "**/*.md" | "**/*.mdx" | "*.md" | (string & Record<never, never>);
+
 /** One collection: where its files are, how to validate them and what to return. */
 interface CollectionConfig<
   TSchema extends StandardSchema<object> = StandardSchema<object>,
@@ -111,13 +118,13 @@ interface CollectionConfig<
   /** Where the files live, relative to the project root, eg `content/posts`. */
   directory: string;
   /** Glob patterns, relative to `directory`, of files to leave out, eg `"drafts/**"`. */
-  exclude?: string | readonly string[];
+  exclude?: Glob | readonly Glob[];
   /**
    * Glob patterns, relative to `directory`, of files to load.
    *
    * @default "**\/*.md"
    */
-  include?: string | readonly string[];
+  include?: Glob | readonly Glob[];
   /** Validates each file's frontmatter, and must produce an object. A file without frontmatter is validated as `{}`. */
   schema: TSchema;
   /**
