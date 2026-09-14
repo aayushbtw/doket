@@ -45,9 +45,13 @@ interface BaseDocument {
   slug: string;
 }
 
-type Document<TSchema> = Simplify<
-  Omit<InferOutput<TSchema>, keyof BaseDocument> & BaseDocument
->;
+// Distributes, so each member of a union schema keeps its own fields.
+type Document<TSchema> =
+  InferOutput<TSchema> extends infer TOutput
+    ? TOutput extends unknown
+      ? Simplify<Omit<TOutput, keyof BaseDocument> & BaseDocument>
+      : never
+    : never;
 
 /** Returned from `transform` to leave a document out of its collection. */
 class Skipped {

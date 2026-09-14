@@ -129,3 +129,39 @@ export type DraftTitle = NonNullable<typeof draft>["title"];
 export const sharedUrl: string | undefined = inlineContent.shared.all[0]?.url;
 export const sharedOrder: number | undefined =
   inlineContent.shared.all[0]?.order;
+
+// A union schema keeps each member's fields, with or without a transform.
+const unions = defineConfig({
+  collections: {
+    media: {
+      directory: "content/media",
+      schema: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("video"), url: z.string() }),
+        z.object({ kind: z.literal("quote"), text: z.string() }),
+      ]),
+    },
+    shared: {
+      directory: "content/shared",
+      schema: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("video"), url: z.string() }),
+        z.object({ kind: z.literal("quote"), text: z.string() }),
+      ]),
+      transform: (document) =>
+        document.kind === "video"
+          ? { slug: document.slug, src: document.url }
+          : { quote: document.text, slug: document.slug },
+    },
+  },
+});
+
+declare const unionContent: Content<typeof unions>;
+
+const [media] = unionContent.media.all;
+export const mediaText: string | undefined =
+  media?.kind === "quote" ? media.text : media?.slug;
+
+const [sharedMedia] = unionContent.shared.all;
+export const sharedSrc: string | undefined =
+  sharedMedia !== undefined && "src" in sharedMedia
+    ? sharedMedia.src
+    : sharedMedia?.quote;
