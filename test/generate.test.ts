@@ -43,11 +43,7 @@ describe("writeTypes", () => {
     const content = path.join(directory, "content");
     expect(changed).toBe(true);
     const written = await readdir(content);
-    expect(written.toSorted()).toStrictEqual([
-      "index.d.ts",
-      "notes.d.ts",
-      "posts.d.ts",
-    ]);
+    expect(written.toSorted()).toStrictEqual(["notes.d.ts", "posts.d.ts"]);
     const posts = await readFile(path.join(content, "posts.d.ts"), "utf-8");
     expect(posts).toContain('import type config from "../../tomekit.config";');
     expect(posts).toContain(
@@ -59,8 +55,10 @@ describe("writeTypes", () => {
     expect(posts).toContain(
       "declare const collection: Collection<Posts, PostsSlug>;"
     );
-    const index = await readFile(path.join(content, "index.d.ts"), "utf-8");
-    expect(index).toContain('"posts": typeof import("./posts").default;');
+    const index = await readFile(path.join(directory, "content.d.ts"), "utf-8");
+    expect(index).toContain(
+      '"posts": typeof import("./content/posts").default;'
+    );
     expect(index).toContain("export type AnyDocument = Posts | Notes;");
   });
 
@@ -83,6 +81,6 @@ describe("writeTypes", () => {
     expect(await writeTypes(directory, configPath, [posts])).toBe(true);
 
     const remaining = await readdir(path.join(directory, "content"));
-    expect(remaining.toSorted()).toStrictEqual(["index.d.ts", "posts.d.ts"]);
+    expect(remaining).toStrictEqual(["posts.d.ts"]);
   });
 });

@@ -20,6 +20,10 @@ import { defineCollection, defineConfig } from "tomekit";
 
 export default defineConfig({
   collections: {
+    index: defineCollection({
+      directory: "content/pages",
+      schema: z.object({ order: z.number() }),
+    }),
     posts: defineCollection({
       directory: "content/posts",
       schema: z.object({ title: z.string() }),
@@ -49,6 +53,7 @@ const tsconfig = JSON.stringify({
 
 async function typecheck(usage: string) {
   const project = await createProject({
+    "content/pages/home.md": "---\norder: 1\n---\n",
     "content/posts/hello.md": "---\ntitle: Hello\n---\n",
     "tomekit.config.ts": config,
     "tsconfig.json": tsconfig,
@@ -75,6 +80,7 @@ describe("generated types", () => {
   it("type content, named types and slugs through the tsconfig alias", async () => {
     const output = await typecheck(`
 import { content, type AnyDocument, type Posts, type PostsSlug } from "tomekit/content";
+import index from "tomekit/content/index";
 import posts from "tomekit/content/posts";
 
 const post: Posts | undefined = content.posts.get("hello");
@@ -83,9 +89,10 @@ const slug: PostsSlug | undefined = post?.slug;
 const fromRoute: string = "anything";
 posts.get(fromRoute);
 const slugs: readonly PostsSlug[] = posts.slugs;
+const order: number | undefined = index.get("home")?.order ?? content.index.all[0]?.order;
 const everything: AnyDocument[] = Object.values(content).flatMap((collection): readonly AnyDocument[] => collection.all);
 
-export { everything, slug, slugs, title };
+export { everything, order, slug, slugs, title };
 `);
 
     expect(output).toBe("");

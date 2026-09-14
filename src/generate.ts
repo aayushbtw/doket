@@ -54,13 +54,13 @@ function indexFile(collections: readonly GeneratedCollection[]): string {
   const reexports = collections
     .map(({ name }, index) => {
       const type = types[index];
-      return `export type { ${type}, ${type}Slug } from ${JSON.stringify(`./${name}`)};`;
+      return `export type { ${type}, ${type}Slug } from ${JSON.stringify(`./content/${name}`)};`;
     })
     .join("\n");
   const entries = collections
     .map(
       ({ name }) =>
-        `  ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./${name}`)}).default;`
+        `  ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./content/${name}`)}).default;`
     )
     .join("\n");
   const union = types.length === 0 ? "never" : types.join(" | ");
@@ -78,8 +78,8 @@ ${entries}
 }
 
 /**
- * Writes the types for `tomekit/content` into `<directory>/content`, touching
- * only files whose contents changed so TypeScript does not reload for nothing.
+ * Writes the types for `tomekit/content` to `<directory>/content.d.ts` and
+ * `<directory>/content/<name>.d.ts`, touching only files whose contents changed so TypeScript does not reload for nothing.
  * Returns whether anything was written or removed.
  */
 async function writeTypes(
@@ -91,33 +91,35 @@ async function writeTypes(
   await mkdir(contentDirectory, { recursive: true });
   const configImport = importPath(contentDirectory, configPath);
 
+  // Beside the folder rather than as its index.d.ts, so a collection can be named `index`.
   const files = new Map<string, string>([
-    ["index.d.ts", indexFile(collections)],
+    [path.join(directory, "content.d.ts"), indexFile(collections)],
     ...collections.map(
       (collection) =>
         [
-          `${collection.name}.d.ts`,
+          path.join(contentDirectory, `${collection.name}.d.ts`),
           collectionFile(collection, configImport),
         ] as const
     ),
   ]);
 
   const existing = await readdir(contentDirectory);
-  const stale = existing.filter((file) => !files.has(file));
+  const stale = existing
+    .map((file) => path.join(contentDirectory, file))
+    .filter((file) => !files.has(file));
   const removed = await Promise.all(
     stale.map(async (file) => {
-      await rm(path.join(contentDirectory, file), { force: true });
+      await rm(file, { force: true });
       return true;
     })
   );
   const written = await Promise.all(
     [...files].map(async ([file, source]) => {
-      const target = path.join(contentDirectory, file);
-      const current = await readFile(target, "utf-8").catch(() => null);
+      const current = await readFile(file, "utf-8").catch(() => null);
       if (current === source) {
         return false;
       }
-      await writeFile(target, source);
+      await writeFile(file, source);
       return true;
     })
   );
