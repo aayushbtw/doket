@@ -32,5 +32,10 @@
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "zod": "^4.6.2"
+  },
+  "intent": {
+    "skills": [
+      "*"
+    ]
   }
 }
