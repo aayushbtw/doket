@@ -47,7 +47,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     overrides: [
       {
-        files: ["test/**/*.ts"],
+        files: ["packages/*/test/**/*.ts"],
         rules: { "promise/prefer-await-to-then": "off" },
       },
     ],
@@ -102,10 +102,5 @@ export default defineConfig({
       "vite-plus/prefer-vite-plus-imports": "error",
     },
   },
-  pack: {
-    dts: true,
-    // query.ts is not in package.json exports: the generated module imports dist/query.mjs by path.
-    entry: ["src/index.ts", "src/content.ts", "src/query.ts", "src/vite.ts"],
-    platform: "node",
-  },
+  run: { cache: true },
 });

@@ -1,4 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+catalogMode: prefer
+
 catalog:
+  "@types/node": ^26.5.1
+  typescript: ^7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@0.3.1
   vitest: 4.1.11
   vite-plus: 0.3.1

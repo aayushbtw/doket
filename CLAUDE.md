@@ -6,13 +6,17 @@ Goal: the best API and DX, fully typed, fast. The one real consumer is `../portf
 
 ## Commands
 
+A Vite+ monorepo: the library is `packages/tomekit`, apps go in `apps/`. Prefer Vite+ built-ins (`vp create`, `vp run`, `pack` options) over custom scripts. Paths below are relative to `packages/tomekit` unless they say otherwise.
+
 ```sh
-pnpm check   # format + lint + typecheck (vp check); `pnpm fix` autofixes
-pnpm test    # vitest
-pnpm build   # vp pack → dist
+pnpm check   # format + lint + typecheck for the whole repo (vp check); `pnpm fix` autofixes
+pnpm test    # vitest in every package (vp run -r test)
+pnpm build   # every package; the library runs vp pack → packages/tomekit/dist
 ```
 
-Before calling a change done, run `pnpm check` and `pnpm test`. For changes to runtime output or generated types, also check the portfolio: `pnpm build`, then in `../portfolio` temporarily set the `tomekit` dependency to `file:../tomekit` and run `pnpm install && pnpm exec vite build && pnpm exec tsc --noEmit`. Afterwards restore its `package.json` and `pnpm-lock.yaml` to what they were, and run `pnpm install` again. Its uncommitted files belong to the user, so never revert them.
+Shared fmt and lint config lives in the root `vite.config.ts`; package-specific lint rules go in its `overrides` with workspace globs, since Vite+ ignores `lint` in package configs. Each package's own `vite.config.ts` holds only its build, test or app config.
+
+Before calling a change done, run `pnpm check` and `pnpm test`. For changes to runtime output or generated types, also check the portfolio: `pnpm build`, then in `../portfolio` temporarily set the `tomekit` dependency to `file:../tomekit/packages/tomekit` and run `pnpm install && pnpm exec vite build && pnpm exec tsc --noEmit`. Afterwards restore its `package.json` and `pnpm-lock.yaml` to what they were, and run `pnpm install` again. Its uncommitted files belong to the user, so never revert them.
 
 ## Structure
 
@@ -66,10 +70,10 @@ Public exports get TSDoc: a one-sentence summary, then an `@example` that runs a
 
 ## Code style
 
-Lint is oxlint with anti-slop (vendored in `tools/oxlint/anti-slop/`) and a short explicit rule list in `vite.config.ts`, no preset. Anti-slop always wins:
+Lint is oxlint with anti-slop (vendored in the root `tools/oxlint/anti-slop/`) and a short explicit rule list in the root `vite.config.ts`, no preset. Anti-slop always wins:
 
 - Never turn off, loosen or suppress an anti-slop rule to make code pass. Change the code.
-- When another rule conflicts with writing code the anti-slop way, turn that rule off in `vite.config.ts` with a one-line reason. Don't write code that dodges both.
+- When another rule conflicts with writing code the anti-slop way, turn that rule off in the root `vite.config.ts` with a one-line reason. Don't write code that dodges both.
 - Add a rule to the list when it would have caught a real problem, not because a preset has it.
 - Unknown input is checked once at its boundary with an assertion or type predicate (eg `assertContentValue`), then handled as a named type. No `typeof`; tell primitives apart by boxing them (`new Object(value) instanceof Number`).
 - A parameter typed `unknown` is only allowed when it is named `cause` or is a type predicate's subject.
@@ -87,7 +91,7 @@ The linter enforces most of these, so match them up front instead of relying on 
 
 ## Internal docs
 
-`docs/` is gitignored and holds what doesn't belong in this file. Read both before designing or naming anything:
+The root `docs/` is gitignored and holds what doesn't belong in this file. Read both before designing or naming anything:
 
 - `docs/naming.md`: one word per concept, and the shape of the reading API
 - `docs/decisions.md`: settled decisions; don't reopen them unless the user asks

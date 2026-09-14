@@ -27,7 +27,7 @@ jobs:
           run-install: true
       - name: Check the tag matches package.json
         run: |
-          version="v$(node -p "require('./package.json').version")"
+          version="v$(node -p "require('./packages/tomekit/package.json').version")"
           if [ "$version" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package.json $version"
             exit 1
@@ -36,3 +36,4 @@ jobs:
       - run: npm install -g npm@latest
       # prepublishOnly runs vp check, vp test and vp pack first.
       - run: npm publish
+        working-directory: packages/tomekit
