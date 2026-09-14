@@ -20,7 +20,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 
 | Layer | Files | Rule |
 | --- | --- | --- |
-| Public types + config | `index.ts` | Types and `define*` helpers only. No IO |
+| Public types + config | `index.ts` | Types, `define*` helpers and the error classes. No IO |
 | Runtime | `query.ts`, `content.ts` | Ships to users' servers. Keep it tiny |
 | Pure core | `errors/` (one class per file), `value.ts` (`ContentValue` and its checks), `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
 | IO per collection | `collection.ts` | Reads files, runs transforms, returns `{ entries, errors, warnings }` |
@@ -93,3 +93,7 @@ The linter enforces most of these, so match them up front instead of relying on 
 - Aggregate types go in `.tomekit/content.d.ts`, not `content/index.d.ts`, so a collection can be named `index`.
 - Minimum Vite is 8. Backwards compatibility is not a goal yet, so prefer current APIs over deprecated ones.
 - No singletons or `getInstance`: each plugin instance gets its own loader.
+- Every error class is exported from `tomekit` in an explicit list, so users check `instanceof` instead of matching `name`. `vite build` wraps plugin errors, so ours sit under `error.errors`; the docs say so.
+- `vite.ts` keeps Vite hook context (`root`, `logger`, `server`) and report state in closure variables, the usual plugin shape. The "state lives in a class" rule is for content state, which `ContentLoader` holds. Don't wrap the plugin in a class.
+- Content is walked twice, by `assertContentValue` and then `serialize`. Measured: the check costs about 2/3 of serialize time, a few ms per build. Keep them separate; merging would mix two concerns.
+- Error classes get a one-line summary each. The single `@example` lives on `TomekitError`, not on every class.

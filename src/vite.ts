@@ -48,6 +48,7 @@ function tomekit({
   config = "tomekit.config.ts",
   types = ".tomekit",
 }: TomekitOptions = {}): Plugin {
+  // Hook context lives in closure variables, the usual plugin shape. Content state belongs in ContentLoader.
   let loader: ContentLoader | undefined;
   let logger: Logger | undefined;
   let root = process.cwd();
