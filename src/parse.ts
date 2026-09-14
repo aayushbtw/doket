@@ -21,8 +21,16 @@ interface ParseInput {
   text: string;
 }
 
+/** Where an issue is in the file. Empty when there is no frontmatter to point into. */
+interface IssueLocation extends Omit<Issue, "message"> {}
+
 type ParseResult =
-  | { issues?: undefined; source: Source<object> }
+  | {
+      issues?: undefined;
+      /** Where the frontmatter sets `slug`, or `undefined` when the slug is the file path. */
+      slugLocation: IssueLocation | undefined;
+      source: Source<object>;
+    }
   | { issues: Issue[] };
 
 function position(text: string, offset: number) {
@@ -95,32 +103,31 @@ async function parse({
       ? undefined
       : parseDocument(frontmatter, { prettyErrors: false });
 
-  /** An issue at an offset into the YAML. With no keys to point at, it points at the opening `---`. */
-  function issueAtOffset(message: string, offset: number | undefined): Issue {
+  /** Where an offset into the YAML is. With no offset it is the opening `---`. */
+  function locationAt(offset: number | undefined): IssueLocation {
     if (match === null) {
-      return { message };
+      return {};
     }
 
     if (offset === undefined) {
-      return { column: 1, line: 1, message };
+      return { column: 1, line: 1 };
     }
 
     const start = match[0].indexOf("\n") + 1;
 
-    return { ...position(text, start + offset), message };
+    return position(text, start + offset);
   }
 
-  function issueAtKeys(message: string, keys: readonly string[]): Issue {
-    return yaml === undefined
-      ? { message }
-      : issueAtOffset(message, offsetOf(yaml, keys));
+  function locationOf(keys: readonly string[]): IssueLocation {
+    return yaml === undefined ? {} : locationAt(offsetOf(yaml, keys));
   }
 
   if (yaml !== undefined && yaml.errors.length > 0) {
     return {
-      issues: yaml.errors.map((error) =>
-        issueAtOffset(error.message, error.pos[0])
-      ),
+      issues: yaml.errors.map((error) => ({
+        ...locationAt(error.pos[0]),
+        message: error.message,
+      })),
     };
   }
 
@@ -133,10 +140,11 @@ async function parse({
     slug === undefined || isSlug(slug)
       ? []
       : [
-          issueAtKeys(
-            'slug: must be a non-empty string, eg "hello-world". Remove it to use the file path instead',
-            ["slug"]
-          ),
+          {
+            ...locationOf(["slug"]),
+            message:
+              'slug: must be a non-empty string, eg "hello-world". Remove it to use the file path instead',
+          },
         ];
 
   const result = await schema["~standard"].validate(data);
@@ -152,10 +160,10 @@ async function parse({
 
           const key = keys.join(".");
 
-          return issueAtKeys(
-            key === "" ? issue.message : `${key}: ${issue.message}`,
-            keys
-          );
+          return {
+            ...locationOf(keys),
+            message: key === "" ? issue.message : `${key}: ${issue.message}`,
+          };
         }),
       ],
     };
@@ -174,6 +182,7 @@ async function parse({
   }
 
   return {
+    slugLocation: slug === undefined ? undefined : locationOf(["slug"]),
     source: {
       body: match ? text.slice(match[0].length) : text,
       file: { name: path.basename(file), path: filePath },
@@ -185,4 +194,4 @@ async function parse({
   };
 }
 
-export { parse, type ParseResult };
+export { type IssueLocation, parse, type ParseResult };

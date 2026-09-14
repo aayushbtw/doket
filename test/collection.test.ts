@@ -350,6 +350,7 @@ describe("loadCollection", () => {
 
     const root = await project({
       "content/posts/a.md": "---\ntitle: A\nslug: same\n---\n",
+      "content/posts/b.md": "---\ntitle: B\nslug: same\n---\n",
       "content/posts/same.md": "---\ntitle: Same\n---\n",
     });
 
@@ -357,7 +358,8 @@ describe("loadCollection", () => {
 
     expect(documents.map((document) => document.slug)).toStrictEqual(["same"]);
     expect(messages(errors)).toStrictEqual([
-      'content/posts/same.md: slug "same" is already used by content/posts/a.md',
+      'content/posts/b.md:3:1: slug "same" is already used by content/posts/a.md. Change this file\'s `slug`',
+      'content/posts/same.md: slug "same" is already used by content/posts/a.md. Rename this file, or set a different `slug` in its frontmatter',
     ]);
   });
 

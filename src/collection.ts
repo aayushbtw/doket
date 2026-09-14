@@ -6,7 +6,7 @@ import { assertTransformResult, buildDocument } from "./document";
 import { ContentError } from "./errors";
 import type { CollectionConfig } from "./index";
 import { parse } from "./parse";
-import type { ParseResult } from "./parse";
+import type { IssueLocation, ParseResult } from "./parse";
 import { serialize } from "./serialize";
 import { Skipped } from "./skipped";
 import type { ContentValue } from "./value";
@@ -21,6 +21,8 @@ interface BuiltDocument {
   output: ContentValue | Skipped;
   /** Computed before the transform, so lookups work whatever it returns. */
   slug: string;
+  /** Where the frontmatter sets `slug`, or `undefined` when the slug is the file path. */
+  slugLocation: IssueLocation | undefined;
 }
 
 /** A file's last result, reused while its text and the config are unchanged. */
@@ -151,9 +153,15 @@ async function loadCollection(
     const first = bySlug.get(document.slug);
 
     if (first !== undefined) {
+      const fix =
+        document.slugLocation === undefined
+          ? "Rename this file, or set a different `slug` in its frontmatter"
+          : "Change this file's `slug`";
+
       errors.push(
         new ContentError(document.filePath, {
-          message: `slug "${document.slug}" is already used by ${first.filePath}`,
+          ...document.slugLocation,
+          message: `slug "${document.slug}" is already used by ${first.filePath}. ${fix}`,
         })
       );
       continue;
@@ -213,7 +221,7 @@ async function loadFile(
     };
   }
 
-  const { source } = parsed;
+  const { slugLocation, source } = parsed;
 
   let output: ContentValue | Skipped;
   let code = "";
@@ -234,7 +242,14 @@ async function loadFile(
     return failure(error);
   }
 
-  const document = { code, filePath, output, slug: source.slug };
+  const document = {
+    code,
+    filePath,
+    output,
+    slug: source.slug,
+    slugLocation,
+  };
+
   cache?.set(file, { document, hash: textHash });
 
   return { document };
