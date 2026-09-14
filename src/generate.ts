@@ -55,11 +55,13 @@ export type DocumentOf<TName extends CollectionName = CollectionName> = {
   [TKey in TName]: _WithSlug<_InferDocument<_Configs[TKey & keyof _Configs]>, SlugOf<TKey>>;
 }[TName];
 
+// No known slugs for a union of names: a slug may exist in only one of them.
+type _KnownSlug<TName extends CollectionName, TEach extends CollectionName = TName> = TEach extends unknown ? ([TName] extends [TEach] ? SlugOf<TName> : never) : never;
 
 /** Every collection in your config. */
 export declare const collections: {
   /** The collection with this name. */
-  get<TName extends CollectionName>(this: void, name: TName): _Collection<DocumentOf<TName>, SlugOf<TName>, SlugOf<TName>>;
+  get<TName extends CollectionName>(this: void, name: TName): _Collection<DocumentOf<TName>, SlugOf<TName>, _KnownSlug<TName>>;
   /** The collection with this name, or \`undefined\` if there is none, eg for a route param. */
   get(this: void, name: string): _Collection<DocumentOf, SlugOf> | undefined;
   /** Whether a collection has this name. Narrows a route param to \`CollectionName\`. */

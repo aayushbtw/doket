@@ -131,4 +131,21 @@ export { name, slug, unchecked, type Archive };
     expect(output).toContain('"archive"');
     expect(output).toContain("possibly 'undefined'");
   }, 30_000);
+
+  it("return a document or undefined when the collection name is a union", async () => {
+    const output = await typecheck(`
+import { collections, type CollectionName, type DocumentOf } from "tomekit/content";
+
+function lookup(name: CollectionName) {
+  const known: DocumentOf = collections.get(name).get("hello");
+  const maybe: DocumentOf | undefined = collections.get(name).get("hello");
+  return [known, maybe];
+}
+
+export { lookup };
+`);
+
+    expect(output).toMatch(/usage\.ts\(5,9\).*'undefined'/su);
+    expect(output).not.toContain("usage.ts(6,");
+  }, 30_000);
 });
