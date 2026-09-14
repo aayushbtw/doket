@@ -3,6 +3,8 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { collections } from "tomekit/content";
 
+import { highlightCode } from "#/lib/highlight";
+
 // Content is read inside a server function so it never ships in the client bundle.
 const getDoc = createServerFn({ method: "GET" })
   .validator((slug: string) => slug)
@@ -33,7 +35,7 @@ function Doc() {
       <h1 className="text-3xl font-semibold">{metadata.title}</h1>
       <p className="mt-2 text-neutral-500">{metadata.description}</p>
       <article className="mt-8">
-        <Markdown>{body}</Markdown>
+        <Markdown highlighter={highlightCode}>{body}</Markdown>
       </article>
     </main>
   );

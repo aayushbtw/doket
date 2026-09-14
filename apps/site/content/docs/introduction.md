@@ -10,3 +10,9 @@ tomekit parses and validates your Markdown at build time, so nothing is parsed a
 ```sh
 pnpm add tomekit
 ```
+
+```ts
+import { collections } from "tomekit/content";
+
+const post = collections.get("posts").get("hello-world");
+```

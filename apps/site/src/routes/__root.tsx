@@ -1,9 +1,14 @@
+import { createThemeCss } from "@tanstack/highlight/theme";
+import { githubLightTheme } from "@tanstack/highlight/themes/github-light";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
 
+const highlightCss = createThemeCss({ light: githubLightTheme });
+
 export const Route = createRootRoute({
   head: () => ({
+    styles: [{ children: highlightCss }],
     meta: [
       {
         charSet: "utf-8",
