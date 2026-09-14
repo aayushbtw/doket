@@ -10,6 +10,9 @@ catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.1
   vitest: 4.1.11
   vite-plus: 0.3.1
+allowBuilds:
+  esbuild: true
+  lightningcss: true
 overrides:
   vite@*: "catalog:"
   vitest@*: "catalog:"
@@ -24,3 +27,7 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+minimumReleaseAgeExclude:
+  - "@tanstack/react-start-rsc@0.1.53"
+  - "@tanstack/react-start@1.168.54"
+  - "@tanstack/start-plugin-core@1.171.44"

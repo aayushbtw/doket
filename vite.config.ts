@@ -5,6 +5,7 @@ const ignorePatterns = [
   "**/dist",
   "**/node_modules",
   "**/pnpm-lock.yaml",
+  "**/routeTree.gen.ts",
   ".agent/**",
   ".agents/**",
   ".claude/**",
