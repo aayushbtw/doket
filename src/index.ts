@@ -1,4 +1,4 @@
-import type { Collection, Simplify } from "./query";
+import type { Collection, Prettify } from "./query";
 
 // The subset of Standard Schema v1 (https://standardschema.dev) the engine
 // reads, so any validator that implements it works, not only Zod.
@@ -49,7 +49,7 @@ interface BaseDocument {
 type Document<TSchema> =
   InferOutput<TSchema> extends infer TOutput
     ? TOutput extends unknown
-      ? Simplify<Omit<TOutput, keyof BaseDocument> & BaseDocument>
+      ? Prettify<Omit<TOutput, keyof BaseDocument> & BaseDocument>
       : never
     : never;
 
@@ -101,21 +101,39 @@ interface Config<
   collections: TCollections;
 }
 
-type SimplifyEach<TValue> = TValue extends object ? Simplify<TValue> : TValue;
+// Values a transform can return that must keep their own type, not be flattened.
+type BuiltIn =
+  | Date
+  | readonly unknown[]
+  | ReadonlyMap<unknown, unknown>
+  | ReadonlySet<unknown>
+  | RegExp
+  | { readonly [Symbol.toStringTag]: string };
+
+type PrettifyIfPlainObject<TValue> = TValue extends object
+  ? TValue extends BuiltIn
+    ? TValue
+    : Prettify<TValue>
+  : TValue;
 
 /** The type of a collection's documents, eg `InferDocument<typeof posts>`. */
 type InferDocument<TCollection> =
   TCollection extends CollectionConfig<infer TSchema, infer TOutput>
     ? unknown extends TOutput
       ? Document<TSchema>
-      : SimplifyEach<Exclude<TOutput, Skipped>>
+      : PrettifyIfPlainObject<Exclude<TOutput, Skipped>>
     : never;
 
-/** Narrows a document's `slug`, when it has one, to the slugs that exist. */
+/**
+ * Narrows a document's `slug`, when it has one, to the slugs that exist, for
+ * the generated types in `.tomekit`.
+ *
+ * @internal
+ */
 type WithSlug<TDocument, TSlug extends string> = TDocument extends {
   slug: string;
 }
-  ? Simplify<Omit<TDocument, "slug"> & { slug: TSlug }>
+  ? Prettify<Omit<TDocument, "slug"> & { slug: TSlug }>
   : TDocument;
 
 type Content<TConfig extends Config = Config> = {

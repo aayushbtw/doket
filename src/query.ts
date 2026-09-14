@@ -1,4 +1,11 @@
-type Simplify<TValue> = { [TKey in keyof TValue]: TValue[TKey] };
+/**
+ * Flattens an intersection into one object type for display.
+ *
+ * @internal
+ */
+// `& {}` makes TypeScript print the resolved fields instead of the alias.
+// oxlint-disable-next-line typescript/ban-types
+type Prettify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & {};
 
 interface Collection<TDocument, TSlug extends string = string> {
   /** Every document, in file name order. Sort, filter and slice it like any array. */
@@ -29,4 +36,4 @@ function createCollection<TDocument>(
   };
 }
 
-export { type Collection, createCollection, type Simplify };
+export { type Collection, createCollection, type Prettify };
