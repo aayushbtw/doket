@@ -14,6 +14,7 @@ import {
 import type { ContentError } from "./errors";
 import { writeTypes } from "./generate";
 import type { Config } from "./index";
+import { isPlainObject } from "./value";
 
 const MODULE_ID = "tomekit/content";
 
@@ -42,11 +43,9 @@ type Change = "config" | "content";
 
 function isConfig(value: unknown): value is Config {
   return (
-    typeof value === "object" &&
-    value !== null &&
+    isPlainObject(value) &&
     "collections" in value &&
-    typeof value.collections === "object" &&
-    value.collections !== null
+    isPlainObject(value.collections)
   );
 }
 
@@ -72,9 +71,11 @@ class ContentLoader {
   /** Files whose changes `affected` looks for, for `vite build --watch`. */
   get watchFiles(): string[] {
     const { configPath, root } = this.#options;
+
     const directories = Object.values(this.#current?.collections ?? {}).map(
       (collection) => path.resolve(root, collection.directory)
     );
+
     return [configPath, ...this.#dependencies, ...directories];
   }
 
@@ -85,12 +86,14 @@ class ContentLoader {
   async load(): Promise<Build> {
     this.#build ??= this.#run();
     const build = this.#build;
+
     try {
       return await build;
     } catch (error) {
       if (this.#build === build) {
         this.#build = undefined;
       }
+
       throw error;
     }
   }
@@ -98,15 +101,18 @@ class ContentLoader {
   /** What a changed file invalidates, if anything. */
   affected(file: string): Change | undefined {
     const { configPath, root } = this.#options;
+
     if (file === configPath || this.#dependencies.includes(file)) {
       return "config";
     }
+
     const matches = Object.values(this.#current?.collections ?? {}).some(
       (collection) => {
         const relative = path.relative(
           path.resolve(root, collection.directory),
           file
         );
+
         return (
           !relative.startsWith("..") &&
           !path.isAbsolute(relative) &&
@@ -114,6 +120,7 @@ class ContentLoader {
         );
       }
     );
+
     return matches ? "content" : undefined;
   }
 
@@ -122,6 +129,7 @@ class ContentLoader {
       this.#config = undefined;
       this.#caches.clear();
     }
+
     this.#build = undefined;
   }
 
@@ -129,6 +137,7 @@ class ContentLoader {
     const { configPath, root } = this.#options;
     const name = path.relative(root, configPath);
     let result: Awaited<ReturnType<typeof runnerImport<{ default?: unknown }>>>;
+
     try {
       result = await runnerImport<{ default?: unknown }>(configPath, {
         configFile: false,
@@ -138,13 +147,16 @@ class ContentLoader {
     } catch (error) {
       throw new ConfigLoadError(name, error);
     }
+
     this.#dependencies = result.dependencies.map((file) =>
       path.resolve(root, file)
     );
     const config = result.module.default;
+
     if (!isConfig(config)) {
       throw new MissingDefaultExportError(name);
     }
+
     return config;
   }
 
@@ -153,16 +165,20 @@ class ContentLoader {
     this.#config ??= this.#importConfig();
     const imported = this.#config;
     let config: Config;
+
     try {
       config = await imported;
     } catch (error) {
       if (this.#config === imported) {
         this.#config = undefined;
       }
+
       throw error;
     }
+
     this.#current = config;
     const issues = configIssues(config);
+
     if (issues.length > 0) {
       throw new InvalidConfigError(path.relative(root, configPath), issues);
     }
@@ -172,23 +188,28 @@ class ContentLoader {
         const cache = this.#caches.get(name) ?? new Map();
         this.#caches.set(name, cache);
         const result = await loadCollection(name, collection, root, { cache });
+
         return { name, ...result };
       })
     );
 
     const warnings = loaded.flatMap((collection) => collection.warnings);
     let typesWritten: string | undefined;
+
     if (types !== false) {
       const generated = loaded.map(({ entries, name }) => ({
         name,
         slugs: entries.map((entry) => entry.slug),
       }));
+
       if (await writeTypes(types, configPath, generated)) {
         typesWritten = path.relative(root, types);
       }
+
       if (!this.#checkedTsconfig) {
         this.#checkedTsconfig = true;
         const warning = await this.#checkTsconfig(types);
+
         if (warning !== undefined) {
           warnings.push(warning);
         }
@@ -199,15 +220,18 @@ class ContentLoader {
       ({ name }, index) =>
         `import c${index} from ${JSON.stringify(`${MODULE_ID}/${name}`)};`
     );
+
     const keys = loaded.map(
       ({ name }, index) => `${JSON.stringify(name)}:c${index}`
     );
+
     return {
       collections: new Map(
         loaded.map(({ entries, name }) => {
           const pairs = entries.map(
             ({ code, slug }) => `[${JSON.stringify(slug)},${code}]`
           );
+
           return [
             name,
             `import { createCollection } from "tomekit/query";
@@ -229,11 +253,13 @@ export const content = {${keys.join(",")}};
   async #checkTsconfig(types: string): Promise<string | undefined> {
     const { root } = this.#options;
     let source: string;
+
     try {
       source = await readFile(path.join(root, "tsconfig.json"), "utf-8");
     } catch {
       return undefined;
     }
+
     // Paths can live in an extended or referenced tsconfig, which this does not follow.
     if (
       source.includes(`"${MODULE_ID}`) ||
@@ -242,7 +268,9 @@ export const content = {${keys.join(",")}};
     ) {
       return undefined;
     }
+
     const target = `./${path.relative(root, types).split(path.sep).join("/")}/content*`;
+
     return `tsconfig.json does not map "${MODULE_ID}", so its imports have no collection types. Add "paths": { "${MODULE_ID}*": ["${target}"] } to compilerOptions.`;
   }
 }

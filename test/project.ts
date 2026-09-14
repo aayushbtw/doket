@@ -8,6 +8,7 @@ async function createProject(files: Record<string, string>) {
   await mkdir(TMP, { recursive: true });
   const root = await mkdtemp(path.join(TMP, "project-"));
   await writeFiles(root, files);
+
   return {
     cleanup: async () => {
       await rm(root, { force: true, recursive: true });
@@ -30,6 +31,7 @@ async function writeFiles(root: string, files: Record<string, string>) {
 }
 
 const SOURCE = path.join(import.meta.dirname, "..", "src", "index.ts");
+
 const QUERY = path.join(import.meta.dirname, "..", "src", "query.ts");
 
 export { createProject, QUERY, SOURCE };

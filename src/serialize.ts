@@ -1,6 +1,5 @@
-import { UnserializableValueError } from "./errors";
-
-const IDENTIFIER = /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u;
+import { isFields, isList, isMap, isNumber, isSet } from "./value";
+import type { ContentValue } from "./value";
 
 interface WriteState {
   /** Whether `JSON.parse` would rebuild the value exactly. */
@@ -11,121 +10,91 @@ interface WriteState {
 // (Dates, Maps, NaN, `undefined`) come back as they went in. Plain JSON data
 // is emitted as `JSON.parse("...")` instead, which V8 loads about twice as
 // fast as the same object literal.
-function serialize(value: unknown): string {
+function serialize(value: ContentValue): string {
   const state: WriteState = { json: true };
-  const source = write(value, "", [], state);
+  const source = write(value, state);
+
   return state.json
     ? `JSON.parse(${JSON.stringify(JSON.stringify(value))})`
     : source;
-}
-
-function kind(value: object): string {
-  const { constructor }: { constructor: unknown } = value;
-  const name = typeof constructor === "function" ? constructor.name : "";
-  return typeof name === "string" && name !== ""
-    ? `an instance of ${name}`
-    : "an object";
-}
-
-function fail(what: string, at: string): never {
-  throw new UnserializableValueError(what, at);
 }
 
 function number(value: number, state: WriteState): string {
   if (!Number.isFinite(value) || Object.is(value, -0)) {
     state.json = false;
   }
+
   if (Number.isNaN(value)) {
     return "NaN";
   }
+
   if (!Number.isFinite(value)) {
     return value > 0 ? "Infinity" : "-Infinity";
   }
+
   return Object.is(value, -0) ? "-0" : String(value);
 }
 
-function write(
-  value: unknown,
-  at: string,
-  parents: object[],
-  state: WriteState
-): string {
+function write(value: ContentValue, state: WriteState): string {
   if (value === undefined) {
     state.json = false;
+
     return "undefined";
   }
-  if (typeof value === "number") {
+
+  if (isNumber(value)) {
     return number(value, state);
   }
-  if (
-    typeof value === "function" ||
-    typeof value === "symbol" ||
-    typeof value === "bigint"
-  ) {
-    fail(`a ${typeof value}`, at);
-  }
-  if (typeof value !== "object" || value === null) {
-    return JSON.stringify(value);
-  }
-  if (parents.includes(value)) {
-    fail("a circular reference", at);
+
+  if (isList(value)) {
+    return `[${value.map((entry) => write(entry, state)).join(",")}]`;
   }
 
-  const inner = [...parents, value];
-  function item(entry: unknown, key: string): string {
-    return write(entry, key, inner, state);
+  if (isFields(value)) {
+    const entries = Object.entries(value).map(
+      // Computed, so a `__proto__` key stays a key instead of setting the prototype.
+      ([key, entry]) => `[${JSON.stringify(key)}]:${write(entry, state)}`
+    );
+
+    return `{${entries.join(",")}}`;
   }
 
-  const prototype: unknown = Object.getPrototypeOf(value);
-  if (
-    prototype !== Object.prototype &&
-    prototype !== null &&
-    !Array.isArray(value)
-  ) {
+  if (isMap(value)) {
     state.json = false;
+
+    const pairs = [...value].map(
+      ([key, entry]) => `[${write(key, state)},${write(entry, state)}]`
+    );
+
+    return `new Map([${pairs.join(",")}])`;
+  }
+
+  if (isSet(value)) {
+    state.json = false;
+    const entries = [...value].map((entry) => write(entry, state));
+
+    return `new Set([${entries.join(",")}])`;
   }
 
   if (value instanceof Date) {
+    state.json = false;
+
     return `new Date(${number(value.getTime(), state)})`;
   }
+
   if (value instanceof URL) {
+    state.json = false;
+
     return `new URL(${JSON.stringify(value.href)})`;
   }
+
   if (value instanceof RegExp) {
+    state.json = false;
+
     return `new RegExp(${JSON.stringify(value.source)},${JSON.stringify(value.flags)})`;
   }
-  if (value instanceof Map) {
-    const pairs = [...value].map(
-      ([key, entry], index) =>
-        `[${item(key, `${at}[${index}][0]`)},${item(entry, `${at}[${index}][1]`)}]`
-    );
-    return `new Map([${pairs.join(",")}])`;
-  }
-  if (value instanceof Set) {
-    const entries = [...value].map((entry, index) =>
-      item(entry, `${at}[${index}]`)
-    );
-    return `new Set([${entries.join(",")}])`;
-  }
-  if (Array.isArray(value)) {
-    const entries = Array.from(value, (entry, index) =>
-      item(entry, `${at}[${index}]`)
-    );
-    return `[${entries.join(",")}]`;
-  }
 
-  if (prototype !== Object.prototype && prototype !== null) {
-    fail(kind(value), at);
-  }
-  const entries = Object.entries(value).map(([key, entry]) => {
-    let path = `${at}[${JSON.stringify(key)}]`;
-    if (IDENTIFIER.test(key)) {
-      path = at === "" ? key : `${at}.${key}`;
-    }
-    // Computed, so a `__proto__` key stays a key instead of setting the prototype.
-    return `[${JSON.stringify(key)}]:${item(entry, path)}`;
-  });
-  return `{${entries.join(",")}}`;
+  return JSON.stringify(value);
 }
 
 export { serialize };

@@ -34,14 +34,18 @@ const config = defineConfig({
 declare const content: Content<typeof config>;
 
 export const title: string | undefined = content.posts.all[0]?.title;
+
 export const slug: string | undefined = content.notes.get("a")?.slug;
+
 export const file: string | undefined = content.notes.all[0]?.file.path;
+
 export const slugs: readonly string[] = content.notes.slugs;
 
 const tagged = content.posts.all.find(
   (post): post is typeof post & { tags: [string, ...string[]] } =>
     post.tags.length > 0
 );
+
 export const firstTag: string | undefined = tagged?.tags[0];
 
 // @ts-expect-error a skipped document is never part of the output
@@ -60,6 +64,7 @@ export type Drafts = (typeof content)["drafts"];
 type AnyDocument =
   | (typeof content.notes.all)[number]
   | (typeof content.posts.all)[number];
+
 export const everyDocument: AnyDocument[] = Object.values(content).flatMap(
   (collection): readonly AnyDocument[] => collection.all
 );
@@ -72,6 +77,7 @@ export function titles<TDocument extends { title: string }>(
 }
 
 declare const slugged: Collection<{ title: string }, "a" | "b">;
+
 export const sluggedTitles: string[] = titles(slugged);
 
 // One transform shared by several collections keeps each schema's fields.
@@ -89,6 +95,7 @@ const inline = defineConfig({
       schema: z.object({ title: z.string() }),
       transform: async (document, { skip }) => {
         await Promise.resolve();
+
         return document.title === "" ? skip() : { heading: document.title };
       },
     },
@@ -97,6 +104,7 @@ const inline = defineConfig({
       schema: z.object({ order: z.number() }),
       transform: (_document, { collection }) => {
         const name: "named" = collection;
+
         return { name };
       },
     },
@@ -119,14 +127,18 @@ const inline = defineConfig({
 declare const inlineContent: Content<typeof inline>;
 
 export const heading: string | undefined = inlineContent.drafts.all[0]?.heading;
+
 export const pageOrder: number | undefined = inlineContent.pages.all[0]?.order;
+
 export const noteSlug: string | undefined = inlineContent.notes.all[0]?.slug;
 
 const [draft] = inlineContent.drafts.all;
+
 // @ts-expect-error a transform's output replaces the document
 export type DraftTitle = NonNullable<typeof draft>["title"];
 
 export const sharedUrl: string | undefined = inlineContent.shared.all[0]?.url;
+
 export const sharedOrder: number | undefined =
   inlineContent.shared.all[0]?.order;
 
@@ -157,10 +169,12 @@ const unions = defineConfig({
 declare const unionContent: Content<typeof unions>;
 
 const [media] = unionContent.media.all;
+
 export const mediaText: string | undefined =
   media?.kind === "quote" ? media.text : media?.slug;
 
 const [sharedMedia] = unionContent.shared.all;
+
 export const sharedSrc: string | undefined =
   sharedMedia !== undefined && "src" in sharedMedia
     ? sharedMedia.src

@@ -1,4 +1,5 @@
 import type { Collection, Prettify } from "./query";
+import type { ContentValue } from "./value";
 
 /**
  * Any validator that implements [Standard Schema](https://standardschema.dev),
@@ -9,7 +10,7 @@ interface StandardSchema<TOutput = unknown> {
   readonly "~standard": {
     readonly types?: { readonly output: TOutput };
     readonly validate: (
-      value: unknown
+      value: ContentValue
     ) => StandardResult<TOutput> | Promise<StandardResult<TOutput>>;
   };
 }

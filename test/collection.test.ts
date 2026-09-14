@@ -8,6 +8,7 @@ import { defineCollection } from "../src/index";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
+
 afterEach(async () => {
   await cleanup?.();
 });
@@ -24,6 +25,7 @@ const posts = defineCollection({
 async function project(files: Record<string, string>) {
   const created = await createProject(files);
   ({ cleanup } = created);
+
   return created.root;
 }
 
@@ -79,6 +81,7 @@ describe("loadCollection", () => {
       include: "*.md",
       schema: z.object({ slug: z.string().optional(), title: z.string() }),
     });
+
     const root = await project({
       "content/posts/2026-03-27-hello.md":
         "---\ntitle: Hello\nslug: hello\n---\n",
@@ -99,6 +102,7 @@ describe("loadCollection", () => {
       include: "*.md",
       schema: z.looseObject({ title: z.string() }),
     });
+
     const root = await project({
       "content/posts/clash.md":
         "---\ntitle: Clash\ncontent: mine\nfile: mine\n---\nBody",
@@ -121,6 +125,7 @@ describe("loadCollection", () => {
       include: "*.md",
       schema: z.object({}),
     });
+
     const root = await project({
       "content/posts/empty.md": "---\n---\nOnly body",
       "content/posts/none.md": "No frontmatter",
@@ -140,6 +145,7 @@ describe("loadCollection", () => {
       exclude: ["drafts/**", "*.draft.md"],
       include: ["**/*.md", "**/*.markdown"],
     });
+
     const root = await project({
       "content/posts/a.md": "---\ntitle: A\n---\n",
       "content/posts/b.markdown": "---\ntitle: B\n---\n",
@@ -156,6 +162,7 @@ describe("loadCollection", () => {
     const root = await project({
       "content/posts/hello.md": "---\ntitle: Hello\n---\n",
     });
+
     const titleOnly = defineCollection({
       ...posts,
       transform: (document) => ({ title: document.title }),
@@ -178,6 +185,7 @@ describe("loadCollection", () => {
       "content/posts/draft.md": "---\ntitle: Draft\ntags: [draft]\n---\n",
       "content/posts/live.md": "---\ntitle: Live\n---\n",
     });
+
     const published = defineCollection({
       ...posts,
       transform: (document, { skip }) =>
@@ -195,6 +203,7 @@ describe("loadCollection", () => {
     const root = await project({
       "content/posts/hello.md": "---\ntitle: Hello\n---\n",
     });
+
     const withUrl = defineCollection({
       ...posts,
       transform: ({ slug }, { collection }) => ({
@@ -211,6 +220,7 @@ describe("loadCollection", () => {
     const root = await project({
       "content/posts/hello.md": "---\ntitle: Hello\n---\n",
     });
+
     const renamed = defineCollection({
       ...posts,
       transform: (document) => ({ ...document, slug: "other" }),
@@ -253,6 +263,7 @@ describe("loadCollection", () => {
       directory: "content/posts",
       schema: z.object({ title: z.string() }),
     });
+
     const root = await project({
       "content/posts/a.md": "---\ntitle: A\n---\n",
       "content/posts/deep/b.md": "---\ntitle: B\n---\n",
@@ -272,6 +283,7 @@ describe("loadCollection", () => {
       defineCollection({ ...posts, directory: "content/post" }),
       root
     );
+
     const empty = await loadCollection("posts", posts, root);
 
     expect([...missing.warnings, ...empty.warnings]).toStrictEqual([
@@ -285,6 +297,7 @@ describe("loadCollection", () => {
       directory: "content/posts",
       schema: z.object({ slug: z.string().optional(), title: z.string() }),
     });
+
     const root = await project({
       "content/posts/a.md": "---\ntitle: A\nslug: same\n---\n",
       "content/posts/same.md": "---\ntitle: Same\n---\n",
@@ -302,9 +315,11 @@ describe("loadCollection", () => {
     const root = await project({
       "content/posts/a.md": "---\ntitle: A\n---\n",
     });
+
     class Author {
       name = "Ada";
     }
+
     const withClass = defineCollection({
       ...posts,
       transform: () => ({ meta: { list: [new Author()] } }),
@@ -323,19 +338,24 @@ describe("loadCollection", () => {
       "content/posts/a.md": "---\ntitle: A\n---\n",
       "content/posts/b.md": "---\ntitle: B\n---\n",
     });
+
     ({ cleanup } = created);
     const transformed: string[] = [];
+
     const counted = defineCollection({
       ...posts,
       transform: (document) => {
         transformed.push(document.slug);
+
         return { title: document.title };
       },
     });
+
     const cache: FileCache = new Map();
 
     await loadCollection("posts", counted, created.root, { cache });
     await created.write({ "content/posts/b.md": "---\ntitle: B2\n---\n" });
+
     const { entries } = await loadCollection("posts", counted, created.root, {
       cache,
     });

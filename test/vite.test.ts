@@ -42,24 +42,33 @@ declare global {
   var tomekitRuns: number | undefined;
 }
 
-function hasContent(module: object): module is { content: { posts: Posts } } {
+type LoadedModule = Awaited<ReturnType<ViteDevServer["ssrLoadModule"]>>;
+
+function hasContent(
+  module: LoadedModule
+): module is LoadedModule & { content: { posts: Posts } } {
   return "content" in module;
 }
 
-function hasDefault(module: object): module is { default: Posts } {
+function hasDefault(
+  module: LoadedModule
+): module is LoadedModule & { default: Posts } {
   return "default" in module;
 }
 
 // Through a file that imports it, the way an app would, not by loading the id directly.
 async function loadPosts(dev: ViteDevServer) {
   const module = await dev.ssrLoadModule("/src/read.ts");
+
   if (!hasContent(module)) {
     throw new Error("tomekit/content has no content export");
   }
+
   return module.content.posts;
 }
 
 let server: ViteDevServer | undefined;
+
 let cleanup: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
@@ -74,6 +83,7 @@ async function start(files: Record<string, string>) {
     "tomekit.config.ts": config,
     ...files,
   });
+
   ({ cleanup } = project);
 
   const messages: string[] = [];
@@ -81,6 +91,7 @@ async function start(files: Record<string, string>) {
   logger.error = (message) => {
     messages.push(message);
   };
+
   logger.warn = (message) => {
     messages.push(message);
   };
@@ -103,6 +114,7 @@ async function start(files: Record<string, string>) {
 }
 
 const HELLO = "---\ntitle: Hello\ndate: 2026-03-27\n---\n";
+
 const LATER = "---\ntitle: Later\ndate: 2026-04-01\n---\n";
 
 describe("tomekit()", () => {
@@ -151,6 +163,7 @@ describe("tomekit()", () => {
       project,
       server: dev,
     } = await start({ "content/posts/hello.md": HELLO });
+
     await loadPosts(dev);
     expect(globalThis.tomekitRuns).toBe(1);
 
@@ -168,6 +181,7 @@ describe("tomekit()", () => {
       project,
       server: dev,
     } = await start({ "content/posts/hello.md": HELLO });
+
     await loadPosts(dev);
 
     await project.write({ "content/posts/later.txt": LATER });
@@ -195,6 +209,7 @@ describe("tomekit()", () => {
       project,
       server: dev,
     } = await start({ "content/posts/hello.md": HELLO });
+
     const sent: HotPayload[] = [];
     dev.environments.client.hot.send = (payload: HotPayload) => {
       sent.push(payload);
@@ -267,6 +282,7 @@ describe("tomekit()", () => {
       path.join(project.root, ".tomekit", "content", "posts.d.ts"),
       "utf-8"
     );
+
     expect(posts).toContain('export type PostsSlug = "hello";');
   });
 
@@ -318,6 +334,7 @@ describe("vite build", () => {
       "src/read.ts": 'export { content } from "tomekit/content";\n',
       "tomekit.config.ts": config,
     });
+
     ({ cleanup } = project);
 
     const result = build({
@@ -344,6 +361,7 @@ describe("vite build", () => {
       "src/main.ts": "export const answer = 42;\n",
       "tomekit.config.ts": config,
     });
+
     ({ cleanup } = project);
 
     const result = build({
@@ -361,7 +379,8 @@ describe("vite build", () => {
 
     await expect(result).rejects.toThrow("1 content file has errors:");
     // The bundler wraps plugin errors and keeps the originals under `errors`.
-    const failure: unknown = await result.catch((error: unknown) => error);
+    const failure: unknown = await result.catch((cause: unknown) => cause);
+
     expect(failure).toHaveProperty(["errors", 0, "name"], "BrokenContentError");
   });
 });

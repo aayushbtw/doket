@@ -10,6 +10,7 @@ import { createProject, QUERY, SOURCE } from "./project";
 const TSC = path.join(import.meta.dirname, "..", "node_modules", ".bin", "tsc");
 
 let cleanup: (() => Promise<void>) | undefined;
+
 afterEach(async () => {
   await cleanup?.();
 });
@@ -64,6 +65,7 @@ async function typecheck(usage: string) {
     "tsconfig.json": tsconfig,
     "usage.ts": usage,
   });
+
   ({ cleanup } = project);
 
   const server = await createServer({
@@ -74,10 +76,12 @@ async function typecheck(usage: string) {
     root: project.root,
     server: { hmr: false, middlewareMode: true },
   });
+
   await server.pluginContainer.buildStart({});
   await server.close();
 
   const result = spawnSync(TSC, ["-p", project.root], { encoding: "utf-8" });
+
   return result.status === 0 ? "" : result.stdout;
 }
 

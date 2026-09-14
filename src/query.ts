@@ -3,9 +3,11 @@
  *
  * @internal
  */
-// `& {}` makes TypeScript print the resolved fields instead of the alias.
-// oxlint-disable-next-line typescript/ban-types
-type Prettify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & {};
+// Intersecting with an empty object makes TypeScript print the resolved fields instead of the alias.
+type Prettify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & Record<
+  never,
+  never
+>;
 
 /**
  * One collection's documents. Everything is built ahead of time, so reads are synchronous.
@@ -30,10 +32,13 @@ interface Collection<TDocument, TSlug extends string = string> {
    * if (!post) throw notFound();
    * ```
    */
-  // `string & {}` keeps the known slugs as suggestions while accepting any string.
   // Method syntax, so `Collection<T, "a">` still fits a helper that takes `Collection<T>`.
-  // oxlint-disable-next-line typescript/ban-types, typescript/method-signature-style, typescript/no-invalid-void-type
-  get(this: void, slug: TSlug | (string & {})): TDocument | undefined;
+  // `string & Record<never, never>` keeps the known slugs as suggestions while accepting any string.
+  // `this: void` tells lint that destructuring `get` from a collection is safe.
+  get(
+    this: void,
+    slug: TSlug | (string & Record<never, never>)
+  ): TDocument | undefined;
   /** Every slug, in the same order as `all`. */
   readonly slugs: readonly TSlug[];
 }
@@ -48,6 +53,7 @@ function createCollection<TDocument>(
   entries: readonly (readonly [string, TDocument])[]
 ): Collection<TDocument> {
   const bySlug = new Map(entries);
+
   return {
     all: entries.map(([, document]) => document),
     get: (slug) => bySlug.get(slug),

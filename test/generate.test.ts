@@ -7,6 +7,7 @@ import { typeName, writeTypes } from "../src/generate";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
+
 afterEach(async () => {
   await cleanup?.();
 });
@@ -14,6 +15,7 @@ afterEach(async () => {
 async function project() {
   const created = await createProject({});
   ({ cleanup } = created);
+
   return created.root;
 }
 

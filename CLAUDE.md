@@ -22,7 +22,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 | --- | --- | --- |
 | Public types + config | `index.ts` | Types and `define*` helpers only. No IO |
 | Runtime | `query.ts`, `content.ts` | Ships to users' servers. Keep it tiny |
-| Pure core | `errors.ts`, `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
+| Pure core | `errors/` (one class per file), `value.ts` (`ContentValue` and its checks), `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
 | IO per collection | `collection.ts` | Reads files, runs transforms, returns `{ entries, errors, warnings }` |
 | State | `loader.ts` (`ContentLoader`) | Owns config, caches and the in-flight build. Knows nothing about how errors are shown |
 | Adapter | `vite.ts` | Maps Vite hooks to loader calls and reports results. No content logic |
@@ -41,7 +41,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 - **Messages name the fix.** Say what went wrong, then what to do: ``transform changed slug "a" to "b". Set `slug` in the frontmatter instead``.
 - **Warnings state the consequence**: `directory "x" does not exist, so content.posts is empty`.
 - Only the adapter adds the `[tomekit]` prefix and talks to the logger. Lower layers return plain strings.
-- **Every thrown error is a class in `errors.ts`.** No `throw new Error(...)` in `src/`. Classes extend a category (`ConfigError`, `ContentError`, `TransformError`, `PluginError`), which extends `TomekitError`. Each sets `name` explicitly, and its constructor takes data and builds the message, so the wording lives in one file. Add a class per distinct failure, not per call site.
+- **Every thrown error is a class in `src/errors/`**, one per file, exported from `src/errors/index.ts`. No `throw new Error(...)` in `src/`. Classes extend a category (`ConfigError`, `ContentError`, `TransformError`, `PluginError`), which extends `TomekitError`. Each sets `name` explicitly, and its constructor takes data and builds the message, so the wording lives with the class. Add a class per distinct failure, not per call site.
 - An error that wraps another passes it as `cause`.
 
 ## TSDoc
@@ -66,7 +66,15 @@ Public exports get TSDoc: a one-sentence summary, then an `@example` that runs a
 
 ## Code style
 
-The linter (ultracite on oxlint) enforces most of these, so match them up front instead of relying on `pnpm fix`:
+Lint is oxlint with anti-slop (vendored in `tools/oxlint/anti-slop/`) and a short explicit rule list in `vite.config.ts`, no preset. Anti-slop always wins:
+
+- Never turn off, loosen or suppress an anti-slop rule to make code pass. Change the code.
+- When another rule conflicts with writing code the anti-slop way, turn that rule off in `vite.config.ts` with a one-line reason. Don't write code that dodges both.
+- Add a rule to the list when it would have caught a real problem, not because a preset has it.
+- Unknown input is checked once at its boundary with an assertion or type predicate (eg `assertContentValue`), then handled as a named type. No `typeof`; tell primitives apart by boxing them (`new Object(value) instanceof Number`).
+- A parameter typed `unknown` is only allowed when it is named `cause` or is a type predicate's subject.
+
+The linter enforces most of these, so match them up front instead of relying on `pnpm fix`:
 
 - Use `interface` for object shapes, including reshaped ones (`interface A extends Omit<B, "k"> {}`). Use `type` only for unions, function types and mapped or conditional types.
 - Types inferred from user schemas are wrapped once in `Prettify` (`{ [K in keyof T]: T[K] } & {}`), so errors print the flat fields instead of nested helper names. Use `PrettifyIfPlainObject` where a value might be an array or a built-in (Date, Map, Set, RegExp), which must keep their own type. Don't generate named interfaces to work around this.
@@ -83,5 +91,5 @@ The linter (ultracite on oxlint) enforces most of these, so match them up front 
 - Generated files stay in `.tomekit/`, never in `src/` or the root. `Register`-style module augmentation was rejected.
 - No type-level "is serializable" check on transform output: it fails on recursive AST types. Validate at runtime in `serialize.ts` and report the key path.
 - Aggregate types go in `.tomekit/content.d.ts`, not `content/index.d.ts`, so a collection can be named `index`.
-- Minimum Vite is 6.4. Check that any Vite API used exists there (eg the hot `connection` event, not `vite:client:connect`).
+- Minimum Vite is 8. Backwards compatibility is not a goal yet, so prefer current APIs over deprecated ones.
 - No singletons or `getInstance`: each plugin instance gets its own loader.

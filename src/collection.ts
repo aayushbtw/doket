@@ -8,6 +8,8 @@ import type { CollectionConfig } from "./index";
 import { parse } from "./parse";
 import type { ParseResult } from "./parse";
 import { serialize } from "./serialize";
+import { assertContentValue, isFields } from "./value";
+import type { ContentValue } from "./value";
 
 const DEFAULT_INCLUDE = "**/*.md";
 
@@ -15,7 +17,7 @@ interface Entry {
   /** `output` as JavaScript source. */
   code: string;
   filePath: string;
-  output: unknown;
+  output: ContentValue | Skipped;
   /** Computed before the transform, so lookups work whatever it returns. */
   slug: string;
 }
@@ -45,6 +47,7 @@ function excludePatterns(collection: CollectionConfig): string[] {
 /** Whether a path relative to the collection directory belongs to it. */
 function inCollection(collection: CollectionConfig, file: string): boolean {
   const posix = file.split(path.sep).join("/");
+
   return (
     includePatterns(collection).some((pattern) =>
       path.matchesGlob(posix, pattern)
@@ -65,6 +68,7 @@ function hash(source: string): string {
 
 async function isDirectory(directory: string): Promise<boolean> {
   const stats = await stat(directory).catch(() => null);
+
   return stats?.isDirectory() ?? false;
 }
 
@@ -75,6 +79,7 @@ async function loadCollection(
   { cache }: { cache?: FileCache } = {}
 ): Promise<CollectionResult> {
   const directory = path.resolve(root, collection.directory);
+
   if (!(await isDirectory(directory))) {
     return {
       entries: [],
@@ -86,15 +91,18 @@ async function loadCollection(
   }
 
   const files: string[] = [];
+
   for await (const file of glob(includePatterns(collection), {
     cwd: directory,
     exclude: excludePatterns(collection),
   })) {
     files.push(file);
   }
+
   files.sort();
 
   const warnings: string[] = [];
+
   if (files.length === 0) {
     warnings.push(
       `${name}: no files in "${collection.directory}" match ${JSON.stringify(collection.include ?? DEFAULT_INCLUDE)}, so content.${name} is empty`
@@ -114,6 +122,7 @@ async function loadCollection(
 
   if (cache !== undefined) {
     const present = new Set(files);
+
     for (const file of cache.keys()) {
       if (!present.has(file)) {
         cache.delete(file);
@@ -124,17 +133,22 @@ async function loadCollection(
   const errors: ContentError[] = [];
   const bySlug = new Map<string, Entry>();
   const entries: Entry[] = [];
+
   for (const result of results) {
     if (result.errors) {
       errors.push(...result.errors);
       continue;
     }
+
     warnings.push(...result.warnings);
     const { entry } = result;
+
     if (entry.output instanceof Skipped) {
       continue;
     }
+
     const first = bySlug.get(entry.slug);
+
     if (first !== undefined) {
       errors.push(
         new ContentError(entry.filePath, {
@@ -143,9 +157,11 @@ async function loadCollection(
       );
       continue;
     }
+
     bySlug.set(entry.slug, entry);
     entries.push(entry);
   }
+
   return { entries, errors, warnings };
 }
 
@@ -159,54 +175,68 @@ async function loadFile(
     source: sourcePath,
   }: { cache?: FileCache; filePath: string; source: string }
 ): Promise<FileResult> {
-  function failure(error: unknown): FileResult {
-    const message = error instanceof Error ? error.message : String(error);
+  function failure(cause: unknown): FileResult {
+    const message = cause instanceof Error ? cause.message : String(cause);
+
     return {
-      errors: [new ContentError(filePath, { message }, { cause: error })],
+      errors: [new ContentError(filePath, { message }, { cause })],
     };
   }
 
   let source: string;
+
   try {
     source = await readFile(sourcePath, "utf-8");
   } catch (error) {
     return failure(error);
   }
+
   const sourceHash = hash(source);
   const cached = cache?.get(file);
+
   if (cached?.hash === sourceHash) {
     return { entry: cached.entry, warnings: [] };
   }
 
   let parsed: ParseResult;
+
   try {
     parsed = await parse({ file, filePath, schema: collection.schema, source });
   } catch (error) {
     return failure(error);
   }
+
   if (parsed.issues) {
     return {
       errors: parsed.issues.map((issue) => new ContentError(filePath, issue)),
     };
   }
+
   const { document } = parsed;
 
-  let output: unknown;
+  let output: ContentValue | Skipped;
   let code = "";
+
   try {
-    output = collection.transform
+    const result = collection.transform
       ? await collection.transform(document, { collection: name, skip })
       : document;
-    if (
-      typeof output === "object" &&
-      output !== null &&
-      "slug" in output &&
-      output.slug !== document.slug
-    ) {
-      throw new SlugChangedError(document.slug, output.slug);
-    }
-    if (!(output instanceof Skipped)) {
-      code = serialize(output);
+
+    if (result instanceof Skipped) {
+      output = result;
+    } else {
+      assertContentValue(result);
+
+      if (
+        isFields(result) &&
+        "slug" in result &&
+        result.slug !== document.slug
+      ) {
+        throw new SlugChangedError(document.slug, result.slug);
+      }
+
+      output = result;
+      code = serialize(result);
     }
   } catch (error) {
     return failure(error);
@@ -214,6 +244,7 @@ async function loadFile(
 
   const entry = { code, filePath, output, slug: document.slug };
   cache?.set(file, { entry, hash: sourceHash });
+
   return {
     entry,
     warnings: parsed.warnings.map(

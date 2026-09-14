@@ -61,9 +61,11 @@ function tomekit({
     errors: readonly ContentError[]
   ): ErrorPayload | undefined {
     const [first] = errors;
+
     if (first === undefined) {
       return undefined;
     }
+
     return {
       err: {
         id: path.resolve(root, first.file),
@@ -84,13 +86,17 @@ function tomekit({
     for (const warning of build.warnings) {
       logger?.warn(`[tomekit] ${warning}`);
     }
+
     if (build.typesWritten !== undefined) {
       logger?.info(`[tomekit] wrote types to ${build.typesWritten}`);
     }
+
     const payload = errorPayload(build.errors);
+
     if (server === undefined || payload === undefined) {
       return;
     }
+
     logger?.error(`[tomekit] ${payload.err.message}`);
     server.environments.client.hot.send(payload);
   }
@@ -99,16 +105,20 @@ function tomekit({
     if (loader === undefined) {
       throw new PluginNotReadyError();
     }
+
     const build = await loader.load();
     latestErrors = build.errors;
+
     if (!reported.has(build)) {
       reported.add(build);
       report(build);
     }
+
     // A build stops on broken content; dev leaves those files out so the rest keeps working.
     if (server === undefined && build.errors.length > 0) {
       throw new BrokenContentError(build.errors);
     }
+
     return build;
   }
 
@@ -127,18 +137,23 @@ function tomekit({
 
   function reload(dev: ViteDevServer, file: string) {
     const change = loader?.affected(file);
+
     if (change === undefined) {
       return;
     }
+
     loader?.invalidate(change);
     void rebuild();
+
     for (const environment of Object.values(dev.environments)) {
-      const modules = [...environment.moduleGraph.idToModuleMap]
-        .filter(([id]) => id.startsWith(RESOLVED_ID))
-        .map(([, module]) => module);
+      const modules = [...environment.moduleGraph.idToModuleMap].flatMap(
+        ([id, module]) => (id.startsWith(RESOLVED_ID) ? [module] : [])
+      );
+
       for (const module of modules) {
         environment.moduleGraph.invalidateModule(module);
       }
+
       if (modules.length > 0) {
         environment.hot.send({ type: "full-reload" });
       }
@@ -175,12 +190,11 @@ function tomekit({
       dev.watcher.on("all", (_event, file) => {
         reload(dev, file);
       });
-      // `vite:client:connect` replaces this, but Vite 6.4 does not emit it.
-      // oxlint-disable-next-line typescript/no-deprecated
-      dev.environments.client.hot.on("connection", () => {
+      dev.environments.client.hot.on("vite:client:connect", (_data, client) => {
         const payload = errorPayload(latestErrors);
+
         if (payload !== undefined) {
-          dev.environments.client.hot.send(payload);
+          client.send(payload);
         }
       });
     },
@@ -193,24 +207,31 @@ function tomekit({
       if (!id.startsWith(RESOLVED_ID)) {
         return null;
       }
+
       const moduleId = id.slice(1);
+
       if (this.environment.name === "client") {
         logger?.warn(
           `[tomekit] ${moduleId} was imported in the browser bundle, so its documents ship to the client. Import it from server code only.`
         );
       }
+
       try {
         const build = await load();
+
         if (id === RESOLVED_ID) {
           return build.index;
         }
+
         const name = id.slice(RESOLVED_ID.length + 1);
         const code = build.collections.get(name);
+
         if (code === undefined) {
           throw new UnknownCollectionError(moduleId, [
             ...build.collections.keys(),
           ]);
         }
+
         return code;
       } finally {
         // For `vite build --watch`; the dev server watches through `configureServer`.

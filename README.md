@@ -25,7 +25,7 @@ content.posts.get("hello-world");
 pnpm add tomekit
 ```
 
-Requires Node 22.17 or later and Vite 6.4 or later.
+Requires Node 22.17 or later and Vite 8 or later.
 
 ## Setup
 

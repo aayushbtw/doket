@@ -14,6 +14,7 @@ import {
   TomekitError,
   TransformError,
   UnknownCollectionError,
+  UnserializableInstanceError,
   UnserializableValueError,
 } from "../src/errors";
 
@@ -26,6 +27,7 @@ describe("errors", () => {
       [new ContentError("a.md", { message: "x" }), TomekitError],
       [new BrokenContentError([]), TomekitError],
       [new UnserializableValueError("a function", "a"), TransformError],
+      [new UnserializableInstanceError("Author", "a"), TransformError],
       [new SlugChangedError("a", "b"), TransformError],
       [new MissingPluginError(), PluginError],
       [new UnknownCollectionError("tomekit/content/a", []), PluginError],

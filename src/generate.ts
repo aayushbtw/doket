@@ -23,6 +23,7 @@ function importPath(from: string, to: string): string {
     .split(path.sep)
     .join("/")
     .replace(/\.[cm]?[jt]s$/u, "");
+
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
@@ -31,10 +32,12 @@ function collectionFile(
   configImport: string
 ): string {
   const type = typeName(name);
+
   const slugType =
     slugs.length === 0
       ? "never"
       : slugs.map((slug) => JSON.stringify(slug)).join(" | ");
+
   return `${HEADER}
 import type { Collection as _Collection, InferDocument as _InferDocument, WithSlug as _WithSlug } from "tomekit";
 import type config from ${JSON.stringify(configImport)};
@@ -53,12 +56,15 @@ export default collection;
 
 function indexFile(collections: readonly GeneratedCollection[]): string {
   const types = collections.map(({ name }) => typeName(name));
+
   const reexports = collections
     .map(({ name }, index) => {
       const type = types[index];
+
       return `export type { ${type}, ${type}Slug } from ${JSON.stringify(`./content/${name}`)};`;
     })
     .join("\n");
+
   const entries = collections
     .map(
       ({ name }) =>
@@ -66,6 +72,7 @@ function indexFile(collections: readonly GeneratedCollection[]): string {
   ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./content/${name}`)}).default;`
     )
     .join("\n");
+
   const union = types.length === 0 ? "never" : types.join(" | ");
 
   return `${HEADER}
@@ -108,26 +115,35 @@ async function writeTypes(
   ]);
 
   const existing = await readdir(contentDirectory);
+
   const stale = existing
     .map((file) => path.join(contentDirectory, file))
     .filter((file) => !files.has(file));
+
   const removed = await Promise.all(
     stale.map(async (file) => {
       await rm(file, { force: true });
+
       return true;
     })
   );
+
   const written = await Promise.all(
     [...files].map(async ([file, source]) => {
       const current = await readFile(file, "utf-8").catch(() => null);
+
       if (current === source) {
         return false;
       }
+
       await writeFile(file, source);
+
       return true;
     })
   );
+
   const changed = [...removed, ...written].includes(true);
+
   return changed;
 }
 
