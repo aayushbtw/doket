@@ -1,3 +1,4 @@
+import { Markdown } from "@tanstack/markdown/react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { collections } from "tomekit/content";
@@ -28,10 +29,12 @@ function Doc() {
   const { body, metadata } = Route.useLoaderData();
 
   return (
-    <main>
-      <h1>{metadata.title}</h1>
-      <p>{metadata.description}</p>
-      <article>{body}</article>
+    <main className="mx-auto my-16 max-w-2xl px-4">
+      <h1 className="text-3xl font-semibold">{metadata.title}</h1>
+      <p className="mt-2 text-neutral-500">{metadata.description}</p>
+      <article className="mt-8">
+        <Markdown>{body}</Markdown>
+      </article>
     </main>
   );
 }
