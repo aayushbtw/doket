@@ -18,6 +18,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          # setup-vp installs pnpm and caches it; setup-node would look for pnpm before it exists.
+          package-manager-cache: false
       - uses: voidzero-dev/setup-vp@v1.20.0
         with:
           node-manager: false
