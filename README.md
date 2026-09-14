@@ -142,7 +142,7 @@ import posts from "tomekit/content/posts";
 
 ## Collection options
 
-Each key in `collections` is the name you query it by, eg `posts` for `content.posts`. Write each one inline, or wrap it in `defineCollection` to define it in its own file. Either way `transform` knows your schema's types.
+Each key in `collections` is the name you query it by, eg `posts` for `content.posts`. Names use letters, digits and `_`, start with a letter, and must generate different types, so `blogPosts` works but `blog-posts`, or both `blog_posts` and `blogPosts`, fail with a message saying why. Write each one inline, or wrap it in `defineCollection` to define it in its own file. Either way `transform` knows your schema's types.
 
 | Option | Required |  |
 | --- | --- | --- |

@@ -20,6 +20,10 @@ import { defineCollection, defineConfig } from "tomekit";
 
 export default defineConfig({
   collections: {
+    collection: defineCollection({
+      directory: "content/pages",
+      schema: z.object({ order: z.number() }),
+    }),
     index: defineCollection({
       directory: "content/pages",
       schema: z.object({ order: z.number() }),

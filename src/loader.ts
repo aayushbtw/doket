@@ -5,6 +5,7 @@ import { runnerImport } from "vite";
 
 import { inCollection, loadCollection } from "./collection";
 import type { ContentError, FileCache } from "./collection";
+import { configIssues } from "./config";
 import { writeTypes } from "./generate";
 import type { Config } from "./index";
 
@@ -135,6 +136,12 @@ class ContentLoader {
       throw error;
     }
     this.#current = config;
+    const issues = configIssues(config);
+    if (issues.length > 0) {
+      throw new Error(
+        [`${path.relative(root, configPath)} is invalid:`, ...issues].join("\n")
+      );
+    }
 
     const loaded = await Promise.all(
       Object.entries(config.collections).map(async ([name, collection]) => {

@@ -9,7 +9,6 @@ import type { Issue, ParseResult } from "./parse";
 import { serialize } from "./serialize";
 
 const DEFAULT_INCLUDE = "**/*.md";
-const IDENTIFIER = /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u;
 
 /** A problem with one content file, printed as `file:line:column: message`. */
 class ContentError extends Error {
@@ -74,13 +73,6 @@ function inCollection(collection: CollectionConfig, file: string): boolean {
   );
 }
 
-/** How the app reads the collection, for messages, eg `content.posts`. */
-function accessor(name: string): string {
-  return IDENTIFIER.test(name)
-    ? `content.${name}`
-    : `content[${JSON.stringify(name)}]`;
-}
-
 function skip(reason?: string): Skipped {
   return new Skipped(reason);
 }
@@ -106,7 +98,7 @@ async function loadCollection(
       entries: [],
       errors: [],
       warnings: [
-        `${name}: directory "${collection.directory}" does not exist, so ${accessor(name)} is empty`,
+        `${name}: directory "${collection.directory}" does not exist, so content.${name} is empty`,
       ],
     };
   }
@@ -123,7 +115,7 @@ async function loadCollection(
   const warnings: string[] = [];
   if (files.length === 0) {
     warnings.push(
-      `${name}: no files in "${collection.directory}" match ${JSON.stringify(collection.include ?? DEFAULT_INCLUDE)}, so ${accessor(name)} is empty`
+      `${name}: no files in "${collection.directory}" match ${JSON.stringify(collection.include ?? DEFAULT_INCLUDE)}, so content.${name} is empty`
     );
   }
 
@@ -251,7 +243,6 @@ async function loadFile(
 }
 
 export {
-  accessor,
   ContentError,
   type Entry,
   type FileCache,

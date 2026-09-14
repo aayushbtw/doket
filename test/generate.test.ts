@@ -20,9 +20,8 @@ async function project() {
 describe("typeName", () => {
   it("turns a collection key into a type name", () => {
     expect(typeName("posts")).toBe("Posts");
-    expect(typeName("blog-posts")).toBe("BlogPosts");
+    expect(typeName("blogPosts")).toBe("BlogPosts");
     expect(typeName("case_studies")).toBe("CaseStudies");
-    expect(typeName("2026")).toBe("_2026");
   });
 });
 
@@ -53,7 +52,7 @@ describe("writeTypes", () => {
       "export type NotesSlug = never;"
     );
     expect(posts).toContain(
-      "declare const collection: Collection<Posts, PostsSlug>;"
+      "declare const collection: _Collection<Posts, PostsSlug>;"
     );
     const index = await readFile(path.join(directory, "content.d.ts"), "utf-8");
     expect(index).toContain(

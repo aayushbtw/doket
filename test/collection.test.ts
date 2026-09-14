@@ -267,14 +267,14 @@ describe("loadCollection", () => {
     const root = await project({ "content/posts/notes.txt": "text" });
 
     const missing = await loadCollection(
-      "blog-posts",
+      "blogPosts",
       defineCollection({ ...posts, directory: "content/post" }),
       root
     );
     const empty = await loadCollection("posts", posts, root);
 
     expect([...missing.warnings, ...empty.warnings]).toStrictEqual([
-      'blog-posts: directory "content/post" does not exist, so content["blog-posts"] is empty',
+      'blogPosts: directory "content/post" does not exist, so content.blogPosts is empty',
       'posts: no files in "content/posts" match "**/*.md", so content.posts is empty',
     ]);
   });

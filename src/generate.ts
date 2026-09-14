@@ -8,19 +8,13 @@ interface GeneratedCollection {
   slugs: readonly string[];
 }
 
-/** `blog-posts` → `BlogPosts`, so the collection key can name a type. */
+/** `blog_posts` → `BlogPosts`, so the collection key can name a type. */
 function typeName(name: string): string {
-  const pascal = name
-    .split(/[^\dA-Za-z]+/u)
+  return name
+    .split("_")
     .filter(Boolean)
     .map((part) => part[0]?.toUpperCase() + part.slice(1))
     .join("");
-  return /^\d/u.test(pascal) ? `_${pascal}` : pascal;
-}
-
-/** A collection name that is safe inside a generated doc comment. */
-function docName(name: string): string {
-  return `\`${name.replaceAll("*/", "*\\/")}\``;
 }
 
 function importPath(from: string, to: string): string {
@@ -42,17 +36,17 @@ function collectionFile(
       ? "never"
       : slugs.map((slug) => JSON.stringify(slug)).join(" | ");
   return `${HEADER}
-import type { Collection, InferDocument, WithSlug } from "tomekit";
+import type { Collection as _Collection, InferDocument as _InferDocument, WithSlug as _WithSlug } from "tomekit";
 import type config from ${JSON.stringify(configImport)};
 
-/** Every slug in the ${docName(name)} collection. */
+/** Every slug in the \`${name}\` collection. */
 export type ${type}Slug = ${slugType};
 
-/** A document in the ${docName(name)} collection. */
-export type ${type} = WithSlug<InferDocument<(typeof config)["collections"][${JSON.stringify(name)}]>, ${type}Slug>;
+/** A document in the \`${name}\` collection. */
+export type ${type} = _WithSlug<_InferDocument<(typeof config)["collections"][${JSON.stringify(name)}]>, ${type}Slug>;
 
-/** The ${docName(name)} collection. */
-declare const collection: Collection<${type}, ${type}Slug>;
+/** The \`${name}\` collection. */
+declare const collection: _Collection<${type}, ${type}Slug>;
 export default collection;
 `;
 }
@@ -68,7 +62,7 @@ function indexFile(collections: readonly GeneratedCollection[]): string {
   const entries = collections
     .map(
       ({ name }) =>
-        `  /** The ${docName(name)} collection. */
+        `  /** The \`${name}\` collection. */
   ${JSON.stringify(name)}: typeof import(${JSON.stringify(`./content/${name}`)}).default;`
     )
     .join("\n");

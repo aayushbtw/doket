@@ -22,7 +22,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 | --- | --- | --- |
 | Public types + config | `index.ts` | Types and `define*` helpers only. No IO |
 | Runtime | `query.ts`, `content.ts` | Ships to users' servers. Keep it tiny |
-| Pure core | `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
+| Pure core | `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
 | IO per collection | `collection.ts` | Reads files, runs transforms, returns `{ entries, errors, warnings }` |
 | State | `loader.ts` (`ContentLoader`) | Owns config, caches and the in-flight build. Knows nothing about how errors are shown |
 | Adapter | `vite.ts` | Maps Vite hooks to loader calls and reports results. No content logic |

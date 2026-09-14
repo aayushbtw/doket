@@ -216,6 +216,19 @@ describe("tomekit()", () => {
     );
   });
 
+  it("fails on collection names it cannot generate types for", async () => {
+    const { server: dev } = await start({
+      "tomekit.config.ts": config.replace(
+        "posts: defineCollection",
+        '"blog-posts": defineCollection'
+      ),
+    });
+
+    await expect(loadPosts(dev)).rejects.toThrow(
+      'tomekit.config.ts is invalid:\ncollection "blog-posts" has an invalid name.'
+    );
+  });
+
   it("warns when tsconfig.json does not map tomekit/content", async () => {
     const { messages } = await start({
       "content/posts/hello.md": HELLO,
