@@ -31,7 +31,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 - Name each file after its one concern (`parse.ts`, `serialize.ts`). Split a file when it takes on a second concern, not when it gets long.
 - State lives in a class with `#private` fields and `readonly` where possible, not in `let`s inside a closure.
 - Keep one explicit `export { ... }` list at the bottom of each file. No `export *` barrels, since the public surface is only what `package.json` `exports` lists.
-- One test file per source module in `test/` (`collection.ts` → `collection.test.ts`). `parse.ts` and `loader.ts` are currently covered through `collection.test.ts` and `vite.test.ts`, so give them their own files when they grow. Type-level tests go in `test/types.ts`, which is checked by `pnpm check` and never run.
+- One test file per source module in `test/` (`collection.ts` → `collection.test.ts`). Type-level tests go in `test/types.ts`, which is checked by `pnpm check` and never run.
 
 ## Errors
 
@@ -89,7 +89,7 @@ The linter enforces most of these, so match them up front instead of relying on 
 
 - No Effect or other FP framework: a large dependency for a one-dependency library. Use the layering above instead.
 - Generated files stay in `.tomekit/`, never in `src/` or the root. `Register`-style module augmentation was rejected.
-- No type-level "is serializable" check on transform output: it fails on recursive AST types. Validate at runtime in `serialize.ts` and report the key path.
+- No type-level "is serializable" check on transform output: it fails on recursive AST types. Validate at runtime in `value.ts` (`assertContentValue`) and report the key path.
 - Aggregate types go in `.tomekit/content.d.ts`, not `content/index.d.ts`, so a collection can be named `index`.
 - Minimum Vite is 8. Backwards compatibility is not a goal yet, so prefer current APIs over deprecated ones.
 - No singletons or `getInstance`: each plugin instance gets its own loader.
