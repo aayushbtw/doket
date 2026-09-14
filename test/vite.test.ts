@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createLogger, createServer } from "vite";
-import type { ViteDevServer } from "vite";
+import { build, createLogger, createServer } from "vite";
+import type { HotPayload, ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { tomekit } from "../src/vite";
@@ -186,7 +186,45 @@ describe("tomekit()", () => {
     const posts = await loadPosts(dev);
 
     expect(posts.all.map((post) => post.title)).toStrictEqual(["Hello"]);
-    expect(messages.join("\n")).toContain("content/posts/broken.md: date:");
+    expect(messages.join("\n")).toContain("content/posts/broken.md:2:1: date:");
+  });
+
+  it("shows broken files in the error overlay", async () => {
+    const {
+      change,
+      project,
+      server: dev,
+    } = await start({ "content/posts/hello.md": HELLO });
+    const sent: HotPayload[] = [];
+    dev.environments.client.hot.send = (payload: HotPayload) => {
+      sent.push(payload);
+    };
+
+    await project.write({ "content/posts/broken.md": "---\ntitle: 1\n---\n" });
+    change("content/posts/broken.md");
+    await loadPosts(dev);
+
+    const overlay = sent.find((payload) => payload.type === "error");
+    expect(overlay?.err.plugin).toBe("tomekit");
+    expect(overlay?.err.loc).toStrictEqual({
+      column: 1,
+      file: path.join(project.root, "content/posts/broken.md"),
+      line: 2,
+    });
+    expect(overlay?.err.message).toContain(
+      "content/posts/broken.md:2:1: date:"
+    );
+  });
+
+  it("warns when tsconfig.json does not map tomekit/content", async () => {
+    const { messages } = await start({
+      "content/posts/hello.md": HELLO,
+      "tsconfig.json": '{ "compilerOptions": { "strict": true } }',
+    });
+
+    expect(messages.join("\n")).toContain(
+      '"tomekit/content*": ["./.tomekit/content*"]'
+    );
   });
 
   it("warns when tomekit/content reaches the browser bundle", async () => {
@@ -217,6 +255,35 @@ describe("tomekit()", () => {
       "utf-8"
     );
     expect(posts).toContain('export type PostsSlug = "hello";');
+  });
+});
+
+describe("vite build", () => {
+  it("fails with every broken file", async () => {
+    const project = await createProject({
+      "content/posts/a.md": "---\ntitle: A\n---\n",
+      "content/posts/b.md": "---\ndate: 2026-03-27\n---\n",
+      "src/read.ts": 'export { content } from "tomekit/content";\n',
+      "tomekit.config.ts": config,
+    });
+    ({ cleanup } = project);
+
+    const result = build({
+      build: {
+        rolldownOptions: { input: "src/read.ts" },
+        ssr: true,
+        write: false,
+      },
+      configFile: false,
+      logLevel: "silent",
+      plugins: [tomekit()],
+      resolve: { alias: { "tomekit/query": QUERY } },
+      root: project.root,
+    });
+
+    await expect(result).rejects.toThrow(
+      /2 content files have errors:\ncontent\/posts\/a\.md:2:1: date: .*\ncontent\/posts\/b\.md:2:1: title: /u
+    );
   });
 });
 

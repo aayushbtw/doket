@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 
+import { loadCollection } from "../src/collection";
+import type { FileCache } from "../src/collection";
 import { defineCollection } from "../src/index";
-import { loadCollection } from "../src/load";
-import type { FileCache } from "../src/load";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -30,6 +30,10 @@ function outputs(entries: { output: unknown }[]) {
   return entries.map((entry) => entry.output);
 }
 
+function messages(errors: readonly Error[]) {
+  return errors.map((error) => error.message);
+}
+
 describe("loadCollection", () => {
   it("parses frontmatter, body, slug and file, in file name order", async () => {
     const root = await project({
@@ -38,7 +42,7 @@ describe("loadCollection", () => {
       "content/posts/nested/a.md": "---\ntitle: A\n---\nBody of A",
     });
 
-    const entries = await loadCollection("posts", posts, root);
+    const { entries } = await loadCollection("posts", posts, root);
 
     expect(
       entries.map(({ filePath, output, slug }) => ({ filePath, output, slug }))
@@ -80,7 +84,7 @@ describe("loadCollection", () => {
       "content/posts/plain.md": "---\ntitle: Plain\n---\n",
     });
 
-    const entries = await loadCollection("posts", withSlug, root);
+    const { entries } = await loadCollection("posts", withSlug, root);
 
     expect(entries.map((entry) => entry.slug)).toStrictEqual([
       "hello",
@@ -98,17 +102,12 @@ describe("loadCollection", () => {
       "content/posts/clash.md":
         "---\ntitle: Clash\ncontent: mine\nfile: mine\n---\nBody",
     });
-    const warnings: string[] = [];
 
-    const entries = await loadCollection("posts", loose, root, {
-      warn: (message) => {
-        warnings.push(message);
-      },
-    });
+    const { entries, warnings } = await loadCollection("posts", loose, root);
 
     expect(warnings).toStrictEqual([
-      'content/posts/clash.md: frontmatter "content" is reserved and was ignored',
-      'content/posts/clash.md: frontmatter "file" is reserved and was ignored',
+      'content/posts/clash.md:3:1: frontmatter "content" is ignored, since tomekit sets `content`',
+      'content/posts/clash.md:4:1: frontmatter "file" is ignored, since tomekit sets `file`',
     ]);
     expect(outputs(entries)).toMatchObject([
       { content: "Body", file: { name: "clash.md" } },
@@ -126,7 +125,7 @@ describe("loadCollection", () => {
       "content/posts/none.md": "No frontmatter",
     });
 
-    const entries = await loadCollection("posts", loose, root);
+    const { entries } = await loadCollection("posts", loose, root);
 
     expect(outputs(entries)).toMatchObject([
       { content: "Only body" },
@@ -147,7 +146,7 @@ describe("loadCollection", () => {
       "content/posts/drafts/d.md": "---\ntitle: D\n---\n",
     });
 
-    const entries = await loadCollection("posts", mixed, root);
+    const { entries } = await loadCollection("posts", mixed, root);
 
     expect(outputs(entries)).toMatchObject([{ title: "A" }, { title: "B" }]);
   });
@@ -161,7 +160,7 @@ describe("loadCollection", () => {
       transform: (document) => ({ title: document.title }),
     });
 
-    const entries = await loadCollection("posts", titleOnly, root);
+    const { entries } = await loadCollection("posts", titleOnly, root);
 
     expect(entries).toStrictEqual([
       {
@@ -186,7 +185,7 @@ describe("loadCollection", () => {
           : { title: document.title },
     });
 
-    const entries = await loadCollection("posts", published, root);
+    const { entries } = await loadCollection("posts", published, root);
 
     expect(outputs(entries)).toStrictEqual([{ title: "Live" }]);
   });
@@ -202,7 +201,7 @@ describe("loadCollection", () => {
       }),
     });
 
-    const entries = await loadCollection("posts", withUrl, root);
+    const { entries } = await loadCollection("posts", withUrl, root);
 
     expect(outputs(entries)).toStrictEqual([{ url: "/posts/hello" }]);
   });
@@ -216,29 +215,36 @@ describe("loadCollection", () => {
       transform: (document) => ({ ...document, slug: "other" }),
     });
 
-    await expect(loadCollection("posts", renamed, root)).rejects.toThrow(
-      'content/posts/hello.md: transform changed slug "hello" to "other"'
+    const { entries, errors } = await loadCollection("posts", renamed, root);
+
+    expect(entries).toStrictEqual([]);
+    expect(messages(errors)[0]).toMatch(
+      /^content\/posts\/hello\.md: transform changed slug "hello" to "other"/u
     );
   });
 
-  it("names the file and field when validation fails", async () => {
+  it("reports every broken file with its line and column, and keeps the rest", async () => {
     const root = await project({
-      "content/posts/broken.md": "---\ntags: []\n---\n",
+      "content/posts/bad-yaml.md": "---\ntitle: [unclosed\n---\n",
+      "content/posts/fine.md": "---\ntitle: Fine\n---\n",
+      "content/posts/no-title.md": "---\ntags:\n  - one\n  - 2\n---\n",
     });
 
-    await expect(loadCollection("posts", posts, root)).rejects.toThrow(
-      /^content\/posts\/broken\.md: title: /u
-    );
-  });
+    const { entries, errors } = await loadCollection("posts", posts, root);
 
-  it("names the file when the frontmatter is not valid YAML", async () => {
-    const root = await project({
-      "content/posts/bad.md": "---\ntitle: [unclosed\n---\n",
+    expect(outputs(entries)).toMatchObject([{ title: "Fine" }]);
+    expect(messages(errors)).toStrictEqual([
+      expect.stringMatching(
+        /^content\/posts\/bad-yaml\.md:2:17: Flow sequence/u
+      ),
+      expect.stringMatching(/^content\/posts\/no-title\.md:4:5: tags\.1: /u),
+      expect.stringMatching(/^content\/posts\/no-title\.md:2:1: title: /u),
+    ]);
+    expect(errors[1]).toMatchObject({
+      column: 5,
+      file: "content/posts/no-title.md",
+      line: 4,
     });
-
-    await expect(loadCollection("posts", posts, root)).rejects.toThrow(
-      /^content\/posts\/bad\.md: /u
-    );
   });
 
   it("matches Markdown files anywhere in the directory by default", async () => {
@@ -252,29 +258,24 @@ describe("loadCollection", () => {
       "content/posts/image.png": "not markdown",
     });
 
-    const entries = await loadCollection("posts", markdown, root);
+    const { entries } = await loadCollection("posts", markdown, root);
 
     expect(outputs(entries)).toMatchObject([{ title: "A" }, { title: "B" }]);
   });
 
   it("warns when the directory is missing or nothing matches", async () => {
     const root = await project({ "content/posts/notes.txt": "text" });
-    const warnings: string[] = [];
-    function warn(message: string) {
-      warnings.push(message);
-    }
 
-    await loadCollection(
-      "typo",
+    const missing = await loadCollection(
+      "blog-posts",
       defineCollection({ ...posts, directory: "content/post" }),
-      root,
-      { warn }
+      root
     );
-    await loadCollection("posts", posts, root, { warn });
+    const empty = await loadCollection("posts", posts, root);
 
-    expect(warnings).toStrictEqual([
-      'typo: directory "content/post" does not exist',
-      'posts: no files in "content/posts" match "**/*.md"',
+    expect([...missing.warnings, ...empty.warnings]).toStrictEqual([
+      'blog-posts: directory "content/post" does not exist, so content["blog-posts"] is empty',
+      'posts: no files in "content/posts" match "**/*.md", so content.posts is empty',
     ]);
   });
 
@@ -288,27 +289,12 @@ describe("loadCollection", () => {
       "content/posts/same.md": "---\ntitle: Same\n---\n",
     });
 
-    await expect(loadCollection("posts", withSlug, root)).rejects.toThrow(
-      'content/posts/same.md: slug "same" is already used by content/posts/a.md'
-    );
-  });
+    const { entries, errors } = await loadCollection("posts", withSlug, root);
 
-  it("reports failing files and keeps the rest when given onError", async () => {
-    const root = await project({
-      "content/posts/broken.md": "---\ntags: []\n---\n",
-      "content/posts/fine.md": "---\ntitle: Fine\n---\n",
-    });
-    const errors: string[] = [];
-
-    const entries = await loadCollection("posts", posts, root, {
-      onError: (error) => {
-        errors.push(error.message);
-      },
-    });
-
-    expect(outputs(entries)).toMatchObject([{ title: "Fine" }]);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/^content\/posts\/broken\.md: title: /u);
+    expect(entries.map((entry) => entry.slug)).toStrictEqual(["same"]);
+    expect(messages(errors)).toStrictEqual([
+      'content/posts/same.md: slug "same" is already used by content/posts/a.md',
+    ]);
   });
 
   it("names the file and key of output that cannot be written", async () => {
@@ -323,8 +309,10 @@ describe("loadCollection", () => {
       transform: () => ({ meta: { list: [new Author()] } }),
     });
 
-    await expect(loadCollection("posts", withClass, root)).rejects.toThrow(
-      "content/posts/a.md: cannot write an instance of Author at meta.list[0] into content"
+    const { errors } = await loadCollection("posts", withClass, root);
+
+    expect(messages(errors)[0]).toMatch(
+      /^content\/posts\/a\.md: cannot write an instance of Author at meta\.list\[0\] into content/u
     );
   });
 
@@ -346,7 +334,7 @@ describe("loadCollection", () => {
 
     await loadCollection("posts", counted, created.root, { cache });
     await created.write({ "content/posts/b.md": "---\ntitle: B2\n---\n" });
-    const entries = await loadCollection("posts", counted, created.root, {
+    const { entries } = await loadCollection("posts", counted, created.root, {
       cache,
     });
 
