@@ -1,6 +1,6 @@
 {
   "name": "tomekit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fully typed content collections for Markdown.",
   "keywords": [
     "collections",
