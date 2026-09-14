@@ -124,14 +124,26 @@ newest(content.posts.all.filter((post) => post.tags.includes("vite"))).slice(
 );
 ```
 
-To read several collections together, eg for a sitemap, annotate the callback. TypeScript's `flatMap` cannot infer a union on its own:
+To read several collections together, eg for a sitemap, use `map` then `flat`, which infers a union of every document type. `flatMap` takes the first collection's type and rejects the rest:
 
 ```ts
-import { content, type AnyDocument } from "tomekit/content";
+Object.values(content)
+  .map((collection) => collection.all)
+  .flat(); // (Posts | Notes)[]
+```
 
-Object.values(content).flatMap(
-  (collection): readonly AnyDocument[] => collection.all
-);
+To pick a collection by a name held in a variable, index `content`. A name typed as a collection name stays typed; a plain string, eg a route param, needs a check first:
+
+```ts
+content[name].all; // name: keyof typeof content
+
+function isCollection(name: string): name is keyof typeof content {
+  return Object.hasOwn(content, name);
+}
+
+if (isCollection(params.collection)) {
+  content[params.collection].get(params.slug);
+}
 ```
 
 Each collection is also its own module, so a file that needs one collection loads only that one:

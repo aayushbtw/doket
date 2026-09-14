@@ -96,4 +96,6 @@ The linter enforces most of these, so match them up front instead of relying on 
 - Every error class is exported from `tomekit` in an explicit list, so users check `instanceof` instead of matching `name`. `vite build` wraps plugin errors, so ours sit under `error.errors`; the docs say so.
 - `vite.ts` keeps Vite hook context (`root`, `logger`, `server`) and report state in closure variables, the usual plugin shape. The "state lives in a class" rule is for content state, which `ContentLoader` holds. Don't wrap the plugin in a class.
 - Content is walked twice, by `assertContentValue` and then `serialize`. Measured: the check costs about 2/3 of serialize time, a few ms per build. Keep them separate; merging would mix two concerns.
+- Collections are read as objects (`content.posts.all`, `content[name]`), not through `getCollection(name)`. Property access keeps completion, go-to-definition and rename, per-collection imports load one collection, and a function would type the same while adding a second way to do it.
+- No sort option on collections: `all` stays in file name order and users call `toSorted`. One line for them, and a page often needs its own order anyway.
 - Error classes get a one-line summary each. The single `@example` lives on `TomekitError`, not on every class.
