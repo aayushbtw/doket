@@ -34,6 +34,16 @@ interface LoaderOptions {
 
 type Change = "config" | "content";
 
+function isConfig(value: unknown): value is Config {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "collections" in value &&
+    typeof value.collections === "object" &&
+    value.collections !== null
+  );
+}
+
 /**
  * Owns everything that outlives one build: the imported config, per-file
  * caches, and the build in progress. Knows nothing about how errors are shown.
@@ -111,15 +121,28 @@ class ContentLoader {
 
   async #importConfig(): Promise<Config> {
     const { configPath, root } = this.#options;
-    const result = await runnerImport<{ default: Config }>(configPath, {
-      configFile: false,
-      logLevel: "error",
-      root,
-    });
+    const name = path.relative(root, configPath);
+    let result: Awaited<ReturnType<typeof runnerImport<{ default?: unknown }>>>;
+    try {
+      result = await runnerImport<{ default?: unknown }>(configPath, {
+        configFile: false,
+        logLevel: "error",
+        root,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${name} failed to load: ${message}`, { cause: error });
+    }
     this.#dependencies = result.dependencies.map((file) =>
       path.resolve(root, file)
     );
-    return result.module.default;
+    const config = result.module.default;
+    if (!isConfig(config)) {
+      throw new Error(
+        `${name} must export a config as its default export: export default defineConfig({ collections: { ... } })`
+      );
+    }
+    return config;
   }
 
   async #run(): Promise<Build> {

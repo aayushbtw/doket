@@ -115,12 +115,26 @@ function tomekit({
     return build;
   }
 
+  /** Builds now in dev, so types and errors don't wait for a page to load. */
+  async function rebuild() {
+    try {
+      await load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger?.error(`[tomekit] ${message}`, {
+        error: error instanceof Error ? error : undefined,
+        timestamp: true,
+      });
+    }
+  }
+
   function reload(dev: ViteDevServer, file: string) {
     const change = loader?.affected(file);
     if (change === undefined) {
       return;
     }
     loader?.invalidate(change);
+    void rebuild();
     for (const environment of Object.values(dev.environments)) {
       const modules = [...environment.moduleGraph.idToModuleMap]
         .filter(([id]) => id.startsWith(RESOLVED_ID))
@@ -135,11 +149,10 @@ function tomekit({
   }
 
   return {
-    // Loads content up front, so types exist before anything imports it.
+    // Loads content up front, so types exist and errors show before anything
+    // imports it. A build fails here; dev logs the error and keeps serving.
     async buildStart() {
-      await load().catch(() => {
-        // Thrown again, with Vite's context, by the first module that needs it.
-      });
+      await (server === undefined ? load() : rebuild());
     },
 
     // Pre-bundling would cache tomekit's runtime by version, so a linked or

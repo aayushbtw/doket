@@ -269,6 +269,45 @@ describe("tomekit()", () => {
     );
     expect(posts).toContain('export type PostsSlug = "hello";');
   });
+
+  it("rewrites types after a change, before anything imports the content", async () => {
+    const { change, project } = await start({
+      "content/posts/hello.md": HELLO,
+    });
+
+    await project.write({ "content/posts/later.md": LATER });
+    change("content/posts/later.md");
+
+    await expect
+      .poll(
+        async () =>
+          await readFile(
+            path.join(project.root, ".tomekit", "content", "posts.d.ts"),
+            "utf-8"
+          )
+      )
+      .toContain('export type PostsSlug = "hello" | "later";');
+  });
+
+  it("logs a config that fails to load as soon as the server starts", async () => {
+    const { messages } = await start({
+      "tomekit.config.ts": 'throw new Error("typo in config");\n',
+    });
+
+    expect(messages.join("\n")).toContain(
+      "[tomekit] tomekit.config.ts failed to load: typo in config"
+    );
+  });
+
+  it("names the default export a config needs", async () => {
+    const { messages } = await start({
+      "tomekit.config.ts": "export const collections = {};\n",
+    });
+
+    expect(messages.join("\n")).toContain(
+      "tomekit.config.ts must export a config as its default export"
+    );
+  });
 });
 
 describe("vite build", () => {
@@ -297,6 +336,30 @@ describe("vite build", () => {
     await expect(result).rejects.toThrow(
       /2 content files have errors:\ncontent\/posts\/a\.md:2:1: date: .*\ncontent\/posts\/b\.md:2:1: title: /u
     );
+  });
+
+  it("fails on broken content even when nothing imports it", async () => {
+    const project = await createProject({
+      "content/posts/a.md": "---\ntitle: A\n---\n",
+      "src/main.ts": "export const answer = 42;\n",
+      "tomekit.config.ts": config,
+    });
+    ({ cleanup } = project);
+
+    const result = build({
+      build: {
+        rolldownOptions: { input: "src/main.ts" },
+        ssr: true,
+        write: false,
+      },
+      configFile: false,
+      logLevel: "silent",
+      plugins: [tomekit()],
+      resolve: { alias: { "tomekit/query": QUERY } },
+      root: project.root,
+    });
+
+    await expect(result).rejects.toThrow("1 content file has errors:");
   });
 });
 
