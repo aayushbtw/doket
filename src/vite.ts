@@ -2,11 +2,7 @@ import path from "node:path";
 
 import type { ErrorPayload, Logger, Plugin, ViteDevServer } from "vite";
 
-import {
-  BrokenContentError,
-  PluginNotReadyError,
-  UnknownCollectionError,
-} from "./errors";
+import { BrokenContentError, PluginNotReadyError } from "./errors";
 import type { ContentError } from "./errors";
 import { ContentLoader, MODULE_ID } from "./loader";
 import type { Build } from "./loader";
@@ -205,35 +201,20 @@ function tomekit({
     enforce: "pre",
 
     async load(id) {
-      if (!id.startsWith(RESOLVED_ID)) {
+      if (id !== RESOLVED_ID) {
         return null;
       }
 
-      const moduleId = id.slice(1);
-
       if (this.environment.name === "client") {
         logger?.warn(
-          `[tomekit] ${moduleId} was imported in the browser bundle, so its documents ship to the client. Import it from server code only.`
+          `[tomekit] ${MODULE_ID} was imported in the browser bundle, so its documents ship to the client. Import it from server code only.`
         );
       }
 
       try {
         const build = await load();
 
-        if (id === RESOLVED_ID) {
-          return build.index;
-        }
-
-        const name = id.slice(RESOLVED_ID.length + 1);
-        const code = build.collections.get(name);
-
-        if (code === undefined) {
-          throw new UnknownCollectionError(moduleId, [
-            ...build.collections.keys(),
-          ]);
-        }
-
-        return code;
+        return build.code;
       } finally {
         // For `vite build --watch`; the dev server watches through `configureServer`.
         for (const file of loader?.watchFiles ?? []) {
@@ -245,9 +226,7 @@ function tomekit({
     name: "tomekit",
 
     resolveId(id) {
-      return id === MODULE_ID || id.startsWith(`${MODULE_ID}/`)
-        ? `\0${id}`
-        : undefined;
+      return id === MODULE_ID ? RESOLVED_ID : undefined;
     },
   };
 }

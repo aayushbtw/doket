@@ -3,8 +3,13 @@ import { z } from "zod";
 
 import { loadCollection } from "../src/collection";
 import type { FileCache } from "../src/collection";
-import { UnserializableValueError } from "../src/errors";
+import {
+  TransformResultError,
+  UnknownTransformFieldError,
+  UnserializableValueError,
+} from "../src/errors";
 import { defineCollection } from "../src/index";
+import type { CollectionConfig } from "../src/index";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -29,8 +34,8 @@ async function project(files: Record<string, string>) {
   return created.root;
 }
 
-function outputs(entries: { output: unknown }[]) {
-  return entries.map((entry) => entry.output);
+function outputs(documents: { output: unknown }[]) {
+  return documents.map((document) => document.output);
 }
 
 function messages(errors: readonly Error[]) {
@@ -38,37 +43,39 @@ function messages(errors: readonly Error[]) {
 }
 
 describe("loadCollection", () => {
-  it("parses frontmatter, body, slug and file, in file name order", async () => {
+  it("builds slug, metadata, body and file, in file name order", async () => {
     const root = await project({
       "content/posts/b.md":
         "---\ntitle: B\ntags:\n  - one\n  - two\n---\n\nBody of B\n",
       "content/posts/nested/a.md": "---\ntitle: A\n---\nBody of A",
     });
 
-    const { entries } = await loadCollection("posts", posts, root);
+    const { documents } = await loadCollection("posts", posts, root);
 
     expect(
-      entries.map(({ filePath, output, slug }) => ({ filePath, output, slug }))
+      documents.map(({ filePath, output, slug }) => ({
+        filePath,
+        output,
+        slug,
+      }))
     ).toStrictEqual([
       {
         filePath: "content/posts/b.md",
         output: {
-          content: "\nBody of B\n",
+          body: "\nBody of B\n",
           file: { name: "b.md", path: "content/posts/b.md" },
+          metadata: { tags: ["one", "two"], title: "B" },
           slug: "b",
-          tags: ["one", "two"],
-          title: "B",
         },
         slug: "b",
       },
       {
         filePath: "content/posts/nested/a.md",
         output: {
-          content: "Body of A",
+          body: "Body of A",
           file: { name: "a.md", path: "content/posts/nested/a.md" },
+          metadata: { tags: [], title: "A" },
           slug: "nested/a",
-          tags: [],
-          title: "A",
         },
         slug: "nested/a",
       },
@@ -88,15 +95,15 @@ describe("loadCollection", () => {
       "content/posts/plain.md": "---\ntitle: Plain\n---\n",
     });
 
-    const { entries } = await loadCollection("posts", withSlug, root);
+    const { documents } = await loadCollection("posts", withSlug, root);
 
-    expect(entries.map((entry) => entry.slug)).toStrictEqual([
+    expect(documents.map((document) => document.slug)).toStrictEqual([
       "hello",
       "plain",
     ]);
   });
 
-  it("warns about reserved frontmatter and keeps its own values", async () => {
+  it("keeps frontmatter named like a document field inside metadata", async () => {
     const loose = defineCollection({
       directory: "content/posts",
       include: "*.md",
@@ -105,17 +112,18 @@ describe("loadCollection", () => {
 
     const root = await project({
       "content/posts/clash.md":
-        "---\ntitle: Clash\ncontent: mine\nfile: mine\n---\nBody",
+        "---\ntitle: Clash\nbody: mine\nfile: mine\n---\nBody",
     });
 
-    const { entries, warnings } = await loadCollection("posts", loose, root);
+    const { documents, warnings } = await loadCollection("posts", loose, root);
 
-    expect(warnings).toStrictEqual([
-      'content/posts/clash.md:3:1: frontmatter "content" is ignored, since tomekit sets `content`',
-      'content/posts/clash.md:4:1: frontmatter "file" is ignored, since tomekit sets `file`',
-    ]);
-    expect(outputs(entries)).toMatchObject([
-      { content: "Body", file: { name: "clash.md" } },
+    expect(warnings).toStrictEqual([]);
+    expect(outputs(documents)).toMatchObject([
+      {
+        body: "Body",
+        file: { name: "clash.md" },
+        metadata: { body: "mine", file: "mine", title: "Clash" },
+      },
     ]);
   });
 
@@ -131,11 +139,11 @@ describe("loadCollection", () => {
       "content/posts/none.md": "No frontmatter",
     });
 
-    const { entries } = await loadCollection("posts", loose, root);
+    const { documents } = await loadCollection("posts", loose, root);
 
-    expect(outputs(entries)).toMatchObject([
-      { content: "Only body" },
-      { content: "No frontmatter" },
+    expect(outputs(documents)).toMatchObject([
+      { body: "Only body", metadata: {} },
+      { body: "No frontmatter", metadata: {} },
     ]);
   });
 
@@ -153,34 +161,55 @@ describe("loadCollection", () => {
       "content/posts/drafts/d.md": "---\ntitle: D\n---\n",
     });
 
-    const { entries } = await loadCollection("posts", mixed, root);
+    const { documents } = await loadCollection("posts", mixed, root);
 
-    expect(outputs(entries)).toMatchObject([{ title: "A" }, { title: "B" }]);
+    expect(outputs(documents)).toMatchObject([
+      { metadata: { title: "A" } },
+      { metadata: { title: "B" } },
+    ]);
   });
 
-  it("runs the transform and keeps the slug for lookups", async () => {
+  it("replaces only the metadata a transform returns", async () => {
     const root = await project({
-      "content/posts/hello.md": "---\ntitle: Hello\n---\n",
+      "content/posts/hello.md": "---\ntitle: Hello\n---\nText",
     });
 
     const titleOnly = defineCollection({
       ...posts,
-      transform: (document) => ({ title: document.title }),
+      transform: ({ metadata }) => ({ metadata: { title: metadata.title } }),
     });
 
-    const { entries } = await loadCollection("posts", titleOnly, root);
+    const { documents } = await loadCollection("posts", titleOnly, root);
 
-    expect(entries).toStrictEqual([
+    expect(outputs(documents)).toStrictEqual([
       {
-        code: 'JSON.parse("{\\"title\\":\\"Hello\\"}")',
-        filePath: "content/posts/hello.md",
-        output: { title: "Hello" },
+        body: "Text",
+        file: { name: "hello.md", path: "content/posts/hello.md" },
+        metadata: { title: "Hello" },
         slug: "hello",
       },
     ]);
+    expect(documents[0]?.code).toMatch(/^JSON\.parse\(/u);
   });
 
-  it("leaves out documents the transform skips", async () => {
+  it("replaces only the body a transform returns", async () => {
+    const root = await project({
+      "content/posts/hello.md": "---\ntitle: Hello\n---\nText",
+    });
+
+    const loud = defineCollection({
+      ...posts,
+      transform: ({ body }) => ({ body: body.toUpperCase() }),
+    });
+
+    const { documents } = await loadCollection("posts", loud, root);
+
+    expect(outputs(documents)).toMatchObject([
+      { body: "TEXT", metadata: { title: "Hello" } },
+    ]);
+  });
+
+  it("leaves out files the transform skips", async () => {
     const root = await project({
       "content/posts/draft.md": "---\ntitle: Draft\ntags: [draft]\n---\n",
       "content/posts/live.md": "---\ntitle: Live\n---\n",
@@ -188,15 +217,13 @@ describe("loadCollection", () => {
 
     const published = defineCollection({
       ...posts,
-      transform: (document, { skip }) =>
-        document.tags.includes("draft")
-          ? skip("draft")
-          : { title: document.title },
+      transform: ({ metadata }, { skip }) =>
+        metadata.tags.includes("draft") ? skip("draft") : {},
     });
 
-    const { entries } = await loadCollection("posts", published, root);
+    const { documents } = await loadCollection("posts", published, root);
 
-    expect(outputs(entries)).toStrictEqual([{ title: "Live" }]);
+    expect(outputs(documents)).toMatchObject([{ metadata: { title: "Live" } }]);
   });
 
   it("passes the collection name to the transform", async () => {
@@ -206,32 +233,52 @@ describe("loadCollection", () => {
 
     const withUrl = defineCollection({
       ...posts,
-      transform: ({ slug }, { collection }) => ({
-        url: `/${collection}/${slug}`,
+      transform: ({ metadata, slug }, { collection }) => ({
+        metadata: { ...metadata, url: `/${collection}/${slug}` },
       }),
     });
 
-    const { entries } = await loadCollection("posts", withUrl, root);
+    const { documents } = await loadCollection("posts", withUrl, root);
 
-    expect(outputs(entries)).toStrictEqual([{ url: "/posts/hello" }]);
+    expect(outputs(documents)).toMatchObject([
+      { metadata: { url: "/posts/hello" } },
+    ]);
   });
 
-  it("fails when the transform changes the slug", async () => {
+  it("fails when a transform returns a field documents do not have", async () => {
     const root = await project({
       "content/posts/hello.md": "---\ntitle: Hello\n---\n",
     });
 
-    const renamed = defineCollection({
+    // Typed loosely, as JavaScript config would be, so the check that runs is the one at build time.
+    const extraField: CollectionConfig = {
       ...posts,
-      transform: (document) => ({ ...document, slug: "other" }),
+      transform: () => ({ url: "/posts/hello" }),
+    };
+
+    const { documents, errors } = await loadCollection(
+      "posts",
+      extraField,
+      root
+    );
+
+    expect(documents).toStrictEqual([]);
+    expect(errors[0]?.cause).toBeInstanceOf(UnknownTransformFieldError);
+    expect(messages(errors)[0]).toBe(
+      'content/posts/hello.md: transform returned "url", but it can only return `metadata` and `body`. Put derived values inside `metadata` instead.'
+    );
+  });
+
+  it("fails when a transform returns something other than an object", async () => {
+    const root = await project({
+      "content/posts/hello.md": "---\ntitle: Hello\n---\n",
     });
 
-    const { entries, errors } = await loadCollection("posts", renamed, root);
+    const text: CollectionConfig = { ...posts, transform: () => "hello" };
 
-    expect(entries).toStrictEqual([]);
-    expect(messages(errors)[0]).toMatch(
-      /^content\/posts\/hello\.md: transform changed slug "hello" to "other"/u
-    );
+    const { errors } = await loadCollection("posts", text, root);
+
+    expect(errors[0]?.cause).toBeInstanceOf(TransformResultError);
   });
 
   it("reports every broken file with its line and column, and keeps the rest", async () => {
@@ -241,9 +288,9 @@ describe("loadCollection", () => {
       "content/posts/no-title.md": "---\ntags:\n  - one\n  - 2\n---\n",
     });
 
-    const { entries, errors } = await loadCollection("posts", posts, root);
+    const { documents, errors } = await loadCollection("posts", posts, root);
 
-    expect(outputs(entries)).toMatchObject([{ title: "Fine" }]);
+    expect(outputs(documents)).toMatchObject([{ metadata: { title: "Fine" } }]);
     expect(messages(errors)).toStrictEqual([
       expect.stringMatching(
         /^content\/posts\/bad-yaml\.md:2:17: Flow sequence/u
@@ -270,9 +317,12 @@ describe("loadCollection", () => {
       "content/posts/image.png": "not markdown",
     });
 
-    const { entries } = await loadCollection("posts", markdown, root);
+    const { documents } = await loadCollection("posts", markdown, root);
 
-    expect(outputs(entries)).toMatchObject([{ title: "A" }, { title: "B" }]);
+    expect(outputs(documents)).toMatchObject([
+      { metadata: { title: "A" } },
+      { metadata: { title: "B" } },
+    ]);
   });
 
   it("warns when the directory is missing or nothing matches", async () => {
@@ -287,8 +337,8 @@ describe("loadCollection", () => {
     const empty = await loadCollection("posts", posts, root);
 
     expect([...missing.warnings, ...empty.warnings]).toStrictEqual([
-      'blogPosts: directory "content/post" does not exist, so content.blogPosts is empty',
-      'posts: no files in "content/posts" match "**/*.md", so content.posts is empty',
+      'blogPosts: directory "content/post" does not exist, so collections.get("blogPosts") is empty',
+      'posts: no files in "content/posts" match "**/*.md", so collections.get("posts") is empty',
     ]);
   });
 
@@ -303,9 +353,9 @@ describe("loadCollection", () => {
       "content/posts/same.md": "---\ntitle: Same\n---\n",
     });
 
-    const { entries, errors } = await loadCollection("posts", withSlug, root);
+    const { documents, errors } = await loadCollection("posts", withSlug, root);
 
-    expect(entries.map((entry) => entry.slug)).toStrictEqual(["same"]);
+    expect(documents.map((document) => document.slug)).toStrictEqual(["same"]);
     expect(messages(errors)).toStrictEqual([
       'content/posts/same.md: slug "same" is already used by content/posts/a.md',
     ]);
@@ -322,14 +372,14 @@ describe("loadCollection", () => {
 
     const withClass = defineCollection({
       ...posts,
-      transform: () => ({ meta: { list: [new Author()] } }),
+      transform: () => ({ metadata: { list: [new Author()] } }),
     });
 
     const { errors } = await loadCollection("posts", withClass, root);
 
     expect(errors[0]?.cause).toBeInstanceOf(UnserializableValueError);
     expect(messages(errors)[0]).toMatch(
-      /^content\/posts\/a\.md: cannot write an instance of Author at meta\.list\[0\] into content/u
+      /^content\/posts\/a\.md: cannot write an instance of Author at metadata\.list\[0\] into content/u
     );
   });
 
@@ -344,10 +394,10 @@ describe("loadCollection", () => {
 
     const counted = defineCollection({
       ...posts,
-      transform: (document) => {
-        transformed.push(document.slug);
+      transform: ({ metadata, slug }) => {
+        transformed.push(slug);
 
-        return { title: document.title };
+        return { metadata: { title: metadata.title } };
       },
     });
 
@@ -356,12 +406,15 @@ describe("loadCollection", () => {
     await loadCollection("posts", counted, created.root, { cache });
     await created.write({ "content/posts/b.md": "---\ntitle: B2\n---\n" });
 
-    const { entries } = await loadCollection("posts", counted, created.root, {
+    const { documents } = await loadCollection("posts", counted, created.root, {
       cache,
     });
 
     // Files load in parallel, so only which ones reran is stable, not their order.
     expect(transformed.toSorted()).toStrictEqual(["a", "b", "b"]);
-    expect(outputs(entries)).toStrictEqual([{ title: "A" }, { title: "B2" }]);
+    expect(outputs(documents)).toMatchObject([
+      { metadata: { title: "A" } },
+      { metadata: { title: "B2" } },
+    ]);
   });
 });

@@ -13,34 +13,34 @@ interface ParseOptions {
   schema?: StandardSchema;
 }
 
-async function parseSource(
-  source: string,
+async function parseText(
+  text: string,
   { file = "hello.md", schema = titled }: ParseOptions = {}
 ) {
   return await parse({
     file,
     filePath: path.join("content/posts", file),
     schema,
-    source,
+    text,
   });
 }
 
 describe("parse", () => {
   it("reads frontmatter and body written with CRLF line endings", async () => {
-    const result = await parseSource("---\r\ntitle: Hello\r\n---\r\nBody");
+    const result = await parseText("---\r\ntitle: Hello\r\n---\r\nBody");
 
     expect(result).toMatchObject({
-      document: { content: "Body", title: "Hello" },
+      source: { body: "Body", metadata: { title: "Hello" } },
     });
   });
 
   it("slugs a nested file by its path without the extension", async () => {
-    const result = await parseSource("---\ntitle: Setup\n---\n", {
+    const result = await parseText("---\ntitle: Setup\n---\n", {
       file: path.join("guides", "setup.draft.md"),
     });
 
     expect(result).toMatchObject({
-      document: {
+      source: {
         file: { name: "setup.draft.md" },
         slug: "guides/setup.draft",
       },
@@ -48,15 +48,15 @@ describe("parse", () => {
   });
 
   it("falls back to the file name for an empty frontmatter slug", async () => {
-    const result = await parseSource('---\ntitle: Hello\nslug: ""\n---\n', {
+    const result = await parseText('---\ntitle: Hello\nslug: ""\n---\n', {
       schema: z.object({ slug: z.string(), title: z.string() }),
     });
 
-    expect(result).toMatchObject({ document: { slug: "hello" } });
+    expect(result).toMatchObject({ source: { slug: "hello" } });
   });
 
   it("leaves line and column out when there is no frontmatter", async () => {
-    const { issues = [] } = await parseSource("Just a body");
+    const { issues = [] } = await parseText("Just a body");
 
     expect(issues).toHaveLength(1);
     expect(Object.keys(issues[0] ?? {})).toStrictEqual(["message"]);
@@ -64,7 +64,7 @@ describe("parse", () => {
   });
 
   it("points a missing nested key at its deepest parent", async () => {
-    const { issues = [] } = await parseSource(
+    const { issues = [] } = await parseText(
       "---\ntitle: A\nmeta:\n  tags: []\n---\n",
       {
         schema: z.object({
@@ -80,7 +80,7 @@ describe("parse", () => {
   });
 
   it("points an issue about the whole frontmatter at its first line", async () => {
-    const result = await parseSource("---\ntitle: A\n---\n", {
+    const result = await parseText("---\ntitle: A\n---\n", {
       schema: titled.refine(() => false, "needs a date or a draft flag"),
     });
 
@@ -90,7 +90,7 @@ describe("parse", () => {
   });
 
   it("fails when the schema does not produce an object", async () => {
-    const result = await parseSource("---\ntitle: A\n---\n", {
+    const result = await parseText("---\ntitle: A\n---\n", {
       schema: titled.transform((data) => data.title),
     });
 

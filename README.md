@@ -5,10 +5,12 @@ Typed content collections for Vite. Parsed at build, nothing at runtime.
 Point tomekit at a folder of Markdown files and a schema. At build time it reads every file, validates its frontmatter, runs your transform, and hands the result to your app as plain data. Your server never parses a file, so it works the same on Node, Cloudflare Workers, or anything else without a filesystem.
 
 ```ts
-import { content } from "tomekit/content";
+import { collections } from "tomekit/content";
 
-content.posts.all.filter((post) => post.tags.includes("vite"));
-content.posts.get("hello-world");
+const posts = collections.get("posts");
+
+posts.documents().filter((post) => post.metadata.tags.includes("vite"));
+posts.get("hello-world").metadata.title;
 ```
 
 ## Why tomekit
@@ -76,87 +78,113 @@ export default defineConfig({
 **4. Read your content** anywhere in your app:
 
 ```ts
-import { content } from "tomekit/content";
+import { collections } from "tomekit/content";
 
-const post = content.posts.get(slug);
+const post = collections.get("posts").get(slug);
 ```
 
-Whenever content loads, the plugin writes types for every collection into `.tomekit/content`: what each document looks like and which slugs exist. They are rewritten only when a collection or a slug changes. Importing `tomekit/content` without the plugin throws an error that says so.
+Whenever content loads, the plugin writes the types for every collection to `.tomekit/content.d.ts`: what each document looks like and which slugs exist. The file is rewritten only when a collection or a slug changes. Importing `tomekit/content` without the plugin throws an error that says so.
+
+## Documents
+
+Every document in every collection has the same four fields:
+
+| Field | Value |
+| --- | --- |
+| `slug` | The frontmatter `slug` if it has one, otherwise the path inside the collection directory without the extension, eg `guides/setup` |
+| `metadata` | The frontmatter, as your schema validated it |
+| `body` | The file's text after the frontmatter block, or what your transform returned as `body` |
+| `file` | `{ name, path }`: the file name, and its path relative to the project root |
+
+```ts
+const post = collections.get("posts").get("hello-world");
+
+post.slug; // "hello-world"
+post.metadata.title; // typed from your schema
+post.body; // the Markdown
+```
+
+Frontmatter lives under `metadata`, so any field name works, including `body` or `file`. A file without frontmatter is validated as an empty object.
 
 ## Types
 
-Each collection gets a document type and a slug type, named after its key in PascalCase. `AnyDocument` is a document from any collection, and `CollectionName` is any collection's key.
+`tomekit/content` exports one type per concept. Pass a collection name, or leave it out to mean any collection.
+
+| Type | Is |
+| --- | --- |
+| `CollectionName` | Any collection's name, eg `"notes" \| "posts"` |
+| `DocumentOf<"posts">` | A document in `posts`. `DocumentOf` is a document in any collection |
+| `SlugOf<"posts">` | A slug in `posts`, eg `"hello-world" \| "setup"`. `SlugOf` is any slug |
 
 ```ts
-import { content, type Posts, type PostsSlug } from "tomekit/content";
+import type { DocumentOf } from "tomekit/content";
 
-function title(post: Posts) {
-  return post.title;
+function title(post: DocumentOf<"posts">) {
+  return post.metadata.title;
 }
-
-post.slug; // PostsSlug, eg "hello-world" | "setup"
-content.posts.get("hello-world"); // suggests PostsSlug values, accepts any string
 ```
 
-The types only update while Vite is running, so after a fresh clone, run `vite dev` or `vite build` once before `tsc`.
+`get` and `has` suggest the names and slugs that exist as you type. The types only update while Vite is running, so after a fresh clone, run `vite dev` or `vite build` once before `tsc`.
 
 ## Reading content
 
-Every collection has three members. The data is built ahead of time, so everything is synchronous.
+Everything starts from `collections`. Each member is named after what it returns, and the data is built ahead of time, so everything is synchronous.
+
+|  | `collections` | A collection |
+| --- | --- | --- |
+| List | `names()`: collection names, in config order | `slugs()`: slugs, in file name order |
+| One | `get(name)`: a collection | `get(slug)`: a document |
+| Check | `has(name)` | `has(slug)` |
+| Documents |  | `documents()`: every document, in file name order |
 
 ```ts
-content.posts.all; // readonly Posts[], in file name order
-content.posts.get("hello-world"); // Posts | undefined
-content.posts.slugs; // readonly PostsSlug[], in the same order as `all`
+import { collections } from "tomekit/content";
+
+const posts = collections.get("posts");
+
+posts.documents(); // DocumentOf<"posts">[]
+posts.get("hello-world"); // DocumentOf<"posts">
+posts.slugs(); // SlugOf<"posts">[]
+collections.names(); // CollectionName[]
 ```
 
-`all` is a plain array, so a query is ordinary JavaScript, and a reusable query is a function:
+`get` with a key that exists, eg a slug you wrote out, returns the value. Any other string, eg a route param, may not exist: `get` returns the value or `undefined`, and `has` narrows the string to a key that exists.
 
 ```ts
-const newest = <T extends { publishedAt: Date }>(documents: readonly T[]) =>
+const post = posts.get(params.slug);
+if (!post) throw notFound();
+
+if (collections.has(params.collection)) {
+  collections.get(params.collection).get(params.slug);
+}
+```
+
+`documents()` returns a plain array, so a query is ordinary JavaScript, and a reusable query is a function:
+
+```ts
+const newest = <T extends { metadata: { publishedAt: Date } }>(
+  documents: readonly T[]
+) =>
   documents.toSorted(
-    (a, b) => b.publishedAt.getTime() - a.publishedAt.getTime()
+    (a, b) =>
+      b.metadata.publishedAt.getTime() - a.metadata.publishedAt.getTime()
   );
 
-newest(content.posts.all.filter((post) => post.tags.includes("vite"))).slice(
-  0,
-  5
-);
+newest(posts.documents()).slice(0, 5);
 ```
 
-To read several collections together, eg for a sitemap, use `map` then `flat`, which infers a union of every document type. `flatMap` takes the first collection's type and rejects the rest:
+To read every collection together, eg for a sitemap or a feed, combine `names()` and `get()`:
 
 ```ts
-Object.values(content)
-  .map((collection) => collection.all)
-  .flat(); // (Posts | Notes)[]
-```
-
-To pick a collection by a name held in a variable, index `content`. A name typed as a collection name stays typed; a plain string, eg a route param, needs a check first:
-
-```ts
-import { content, type CollectionName } from "tomekit/content";
-
-content[name].all; // name: CollectionName
-
-function isCollection(name: string): name is CollectionName {
-  return Object.hasOwn(content, name);
-}
-
-if (isCollection(params.collection)) {
-  content[params.collection].get(params.slug);
-}
-```
-
-Each collection is also its own module, so a file that needs one collection loads only that one:
-
-```ts
-import posts from "tomekit/content/posts";
+collections
+  .names()
+  .flatMap((name) => collections.get(name).documents())
+  .map((document) => document.metadata.url);
 ```
 
 ## Collection options
 
-Each key in `collections` is the name you query it by, eg `posts` for `content.posts`. Names use letters, digits and `_`, start with a letter, and must generate different types, so `blogPosts` works but `blog-posts`, or both `blog_posts` and `blogPosts`, fail with a message saying why. Write each one inline, or wrap it in `defineCollection` to define it in its own file. Either way `transform` knows your schema's types.
+Each key in `collections` is the collection's name, eg `posts` for `collections.get("posts")`. Names use letters, digits and `_` and start with a letter, so `blogPosts` works but `blog-posts` fails with a message saying why. Write each one inline, or wrap it in `defineCollection` to define it in its own file. Either way `transform` knows your schema's types.
 
 | Option | Required |  |
 | --- | --- | --- |
@@ -164,24 +192,11 @@ Each key in `collections` is the name you query it by, eg `posts` for `content.p
 | `include` | no | A glob or globs relative to `directory`. Defaults to `"**/*.md"` |
 | `exclude` | no | A glob or globs relative to `directory` to leave out |
 | `schema` | yes | Any [Standard Schema](https://standardschema.dev) for the frontmatter |
-| `transform` | no | Shapes each document at build time, see [Transform](#transform) |
-
-## Documents
-
-Without a transform, each document is your validated frontmatter plus three fields:
-
-| Field | Value |
-| --- | --- |
-| `slug` | The frontmatter `slug` if it has one, otherwise the path inside the collection directory without the extension, eg `guides/setup` |
-| `content` | The file's body, after the frontmatter block |
-| `file.name` | The file name with its extension, eg `setup.md` |
-| `file.path` | The path relative to the project root |
-
-A file without frontmatter is validated as an empty object. Frontmatter named `content` or `file` is ignored with a warning, since tomekit sets those.
+| `transform` | no | Changes each document at build time, see [Transform](#transform) |
 
 ## Transform
 
-`transform` runs once per file at build time and decides what your app receives. Use it to render Markdown, derive fields, or drop what you do not need. The result must be data: plain objects, arrays, strings, numbers, booleans, `null`, `undefined`, `Date`, `Map`, `Set`, `URL` and `RegExp`. Anything else, eg a class instance or a function, fails that file with the key it was found at.
+`transform` runs once per file at build time. It receives the document as parsed and returns a new `metadata` and/or `body`. Whatever it leaves out stays as it was, and the types of what it returns become the document's. Use it to render Markdown, derive fields, or drop what you do not need.
 
 ```ts
 import { marked } from "marked";
@@ -189,44 +204,43 @@ import { marked } from "marked";
 const posts = defineCollection({
   directory: "content/posts",
   schema: z.object({ title: z.string() }),
-  transform: ({ content, slug, title }) => ({
-    title,
-    html: marked.parse(content, { async: false }),
-    url: `/posts/${slug}`,
+  transform: ({ body, metadata, slug }) => ({
+    body: marked.parse(body, { async: false }),
+    metadata: { ...metadata, url: `/posts/${slug}` },
   }),
 });
+
+collections.get("posts").get("hello-world").body; // the HTML
 ```
 
-The return type of `transform` becomes the type of `all` and `get`. `get(slug)` keeps working even if your transform leaves `slug` out. A transform cannot change `slug`; set it in the frontmatter instead.
+A transform cannot change `slug` or `file`, and cannot return other fields: derived values like `url` go inside `metadata`, and anything else fails that file with a message saying so. What it returns must be data: plain objects, arrays, strings, numbers, booleans, `null`, `undefined`, `Date`, `Map`, `Set`, `URL` and `RegExp`. Anything else, eg a class instance or a function, fails that file with the key it was found at.
 
 ### Sharing a transform
 
-The second argument names the collection, so one function can serve several. Type the document as `BaseDocument` or a subtype to keep each schema's fields:
+The second argument names the collection, so one function can serve several. Type its first argument as `Source` to keep each schema's metadata:
 
 ```ts
-import type { BaseDocument, TransformContext } from "tomekit";
+import type { Source, TransformContext } from "tomekit";
 
-function withUrl<T extends BaseDocument>(
-  { content, file, ...document }: T,
+function withUrl<TMetadata extends object>(
+  { body, metadata, slug }: Source<TMetadata>,
   { collection }: TransformContext
 ) {
   return {
-    ...document,
-    html: marked.parse(content, { async: false }),
-    url: `/${collection}/${document.slug}`,
+    body: marked.parse(body, { async: false }),
+    metadata: { ...metadata, url: `/${collection}/${slug}` },
   };
 }
 
 // collections: { posts: { ..., transform: withUrl }, notes: { ..., transform: withUrl } }
 ```
 
-### Skipping documents
+### Skipping files
 
-Return `skip()` from the transform to leave a document out, eg drafts:
+Return `skip()` from the transform to leave a file out, eg drafts. Return `{}` to keep a document as it is:
 
 ```ts
-transform: (document, { skip }) =>
-  document.draft ? skip("draft") : document,
+transform: ({ metadata }, { skip }) => (metadata.draft ? skip("draft") : {}),
 ```
 
 ## Errors
@@ -239,13 +253,12 @@ content/posts/hello.md:2:1: title: Invalid input: expected string, received unde
 content/posts/setup.md:4:5: tags.1: Invalid input: expected string, received number
 ```
 
-In dev, the same errors are logged and shown in Vite's error overlay, and only those files are left out, so the rest of your site keeps working while you fix them. Two files with the same slug, and a transform that throws, are handled the same way.
+In dev, the same errors are logged and shown in Vite's error overlay, and only those files are left out, so the rest of your site keeps working while you fix them. Two files with the same slug, and a transform that throws or returns the wrong shape, are handled the same way.
 
 tomekit also warns when:
 
 - a collection's `directory` does not exist, or no files in it match `include`, so the collection is empty
-- frontmatter uses `content` or `file`, which tomekit sets
-- `tomekit/content` or a collection module is imported in the browser bundle, which would ship its documents to the client
+- `tomekit/content` is imported in the browser bundle, which would ship its documents to the client
 - `tsconfig.json` has no `tomekit/content*` path, so imports have no collection types
 
 A config that fails to load, eg a typo in `tomekit.config.ts`, fails `vite build` and is logged as soon as the dev server starts.

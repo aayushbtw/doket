@@ -68,7 +68,7 @@ describe("ContentLoader", () => {
     const next = await loader.load();
 
     expect(next).not.toBe(first);
-    expect(next.collections.get("posts")).toContain('"later"');
+    expect(next.code).toContain('"later"');
   });
 
   it("retries a config that failed to load on the next call", async () => {
@@ -82,7 +82,7 @@ describe("ContentLoader", () => {
     await project.write({ "tomekit.config.ts": config });
     const build = await loader.load();
 
-    expect([...build.collections.keys()]).toStrictEqual(["posts"]);
+    expect(build.code).toContain('"posts":createCollection(');
   });
 
   it("keeps broken files out of the module and in the errors", async () => {
@@ -93,11 +93,11 @@ describe("ContentLoader", () => {
 
     const build = await loader.load();
 
-    expect(build.collections.get("posts")).not.toContain('"broken"');
+    expect(build.code).toContain('"hello"');
+    expect(build.code).not.toContain('"broken"');
     expect(build.errors.map((error) => error.file)).toStrictEqual([
       "content/posts/broken.md",
     ]);
-    expect(build.index).toContain("export const content = {");
   });
 
   it("tells config changes from content changes and ignores the rest", async () => {

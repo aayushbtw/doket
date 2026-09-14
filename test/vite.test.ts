@@ -19,9 +19,11 @@ export default defineConfig({
     posts: defineCollection({
       directory: "content/posts",
       schema: z.object({ date: z.coerce.date(), title: z.string() }),
-      transform: (document) => {
+      transform: (source) => {
         globalThis.tomekitRuns = (globalThis.tomekitRuns ?? 0) + 1;
-        return { date: document.date, title: document.title };
+        return {
+          metadata: { date: source.metadata.date, title: source.metadata.title },
+        };
       },
     }),
   },
@@ -29,13 +31,18 @@ export default defineConfig({
 `;
 
 interface Post {
-  date: Date;
-  title: string;
+  metadata: { date: Date; title: string };
 }
 
 interface Posts {
-  all: readonly Post[];
+  documents: () => readonly Post[];
   get: (slug: string) => Post | undefined;
+}
+
+interface Collections {
+  get: (name: string) => Posts | undefined;
+  has: (name: string) => boolean;
+  names: () => readonly string[];
 }
 
 declare global {
@@ -44,27 +51,31 @@ declare global {
 
 type LoadedModule = Awaited<ReturnType<ViteDevServer["ssrLoadModule"]>>;
 
-function hasContent(
+function hasCollections(
   module: LoadedModule
-): module is LoadedModule & { content: { posts: Posts } } {
-  return "content" in module;
-}
-
-function hasDefault(
-  module: LoadedModule
-): module is LoadedModule & { default: Posts } {
-  return "default" in module;
+): module is LoadedModule & { collections: Collections } {
+  return "collections" in module;
 }
 
 // Through a file that imports it, the way an app would, not by loading the id directly.
-async function loadPosts(dev: ViteDevServer) {
+async function loadCollections(dev: ViteDevServer) {
   const module = await dev.ssrLoadModule("/src/read.ts");
 
-  if (!hasContent(module)) {
-    throw new Error("tomekit/content has no content export");
+  if (!hasCollections(module)) {
+    throw new Error("tomekit/content has no collections export");
   }
 
-  return module.content.posts;
+  return module.collections;
+}
+
+async function loadPosts(dev: ViteDevServer) {
+  const posts = (await loadCollections(dev)).get("posts");
+
+  if (posts === undefined) {
+    throw new Error("tomekit/content has no posts collection");
+  }
+
+  return posts;
 }
 
 /** A browser's HMR connection to a listening dev server. */
@@ -102,7 +113,7 @@ async function start(
   options: ServerOptions = { hmr: false, middlewareMode: true }
 ) {
   const project = await createProject({
-    "src/read.ts": 'export { content } from "tomekit/content";\n',
+    "src/read.ts": 'export { collections } from "tomekit/content";\n',
     "tomekit.config.ts": config,
     ...files,
   });
@@ -149,35 +160,21 @@ describe("tomekit()", () => {
 
     const posts = await loadPosts(dev);
 
-    expect(posts.all.map((post) => post.title)).toStrictEqual([
+    expect(posts.documents().map((post) => post.metadata.title)).toStrictEqual([
       "Hello",
       "Later",
     ]);
-    expect(posts.get("hello")?.date).toBeInstanceOf(Date);
+    expect(posts.get("hello")?.metadata.date).toBeInstanceOf(Date);
   });
 
-  it("serves one collection from its own module", async () => {
-    const { server: dev } = await start({
-      "content/posts/hello.md": HELLO,
-      "src/posts.ts": 'export { default } from "tomekit/content/posts";\n',
-    });
+  it("serves collection names, and nothing for an unknown name", async () => {
+    const { server: dev } = await start({ "content/posts/hello.md": HELLO });
 
-    const module = await dev.ssrLoadModule("/src/posts.ts");
+    const collections = await loadCollections(dev);
 
-    expect(hasDefault(module) && module.default.get("hello")?.title).toBe(
-      "Hello"
-    );
-  });
-
-  it("names the known collections when importing one that does not exist", async () => {
-    const { server: dev } = await start({
-      "content/posts/hello.md": HELLO,
-      "src/missing.ts": 'export { default } from "tomekit/content/drafts";\n',
-    });
-
-    await expect(dev.ssrLoadModule("/src/missing.ts")).rejects.toThrow(
-      'Collections in the config: "posts"'
-    );
+    expect(collections.names()).toStrictEqual(["posts"]);
+    expect(collections.has("posts")).toBe(true);
+    expect(collections.get("drafts")).toBeUndefined();
   });
 
   it("reloads for a new file and reruns only what changed", async () => {
@@ -194,7 +191,7 @@ describe("tomekit()", () => {
     change("content/posts/later.md");
     const posts = await loadPosts(dev);
 
-    expect(posts.get("later")?.title).toBe("Later");
+    expect(posts.get("later")?.metadata.title).toBe("Later");
     expect(globalThis.tomekitRuns).toBe(2);
   });
 
@@ -211,7 +208,7 @@ describe("tomekit()", () => {
     change("content/posts/later.txt");
     const posts = await loadPosts(dev);
 
-    expect(posts.all).toHaveLength(1);
+    expect(posts.documents()).toHaveLength(1);
   });
 
   it("keeps serving the other files when one is broken", async () => {
@@ -222,7 +219,9 @@ describe("tomekit()", () => {
 
     const posts = await loadPosts(dev);
 
-    expect(posts.all.map((post) => post.title)).toStrictEqual(["Hello"]);
+    expect(posts.documents().map((post) => post.metadata.title)).toStrictEqual([
+      "Hello",
+    ]);
     expect(messages.join("\n")).toContain("content/posts/broken.md:2:1: date:");
   });
 
@@ -328,11 +327,11 @@ describe("tomekit()", () => {
     const { project } = await start({ "content/posts/hello.md": HELLO });
 
     const posts = await readFile(
-      path.join(project.root, ".tomekit", "content", "posts.d.ts"),
+      path.join(project.root, ".tomekit", "content.d.ts"),
       "utf-8"
     );
 
-    expect(posts).toContain('export type PostsSlug = "hello";');
+    expect(posts).toContain('  "posts": "hello";');
   });
 
   it("rewrites types after a change, before anything imports the content", async () => {
@@ -347,11 +346,11 @@ describe("tomekit()", () => {
       .poll(
         async () =>
           await readFile(
-            path.join(project.root, ".tomekit", "content", "posts.d.ts"),
+            path.join(project.root, ".tomekit", "content.d.ts"),
             "utf-8"
           )
       )
-      .toContain('export type PostsSlug = "hello" | "later";');
+      .toContain('  "posts": "hello" | "later";');
   });
 
   it("logs a config that fails to load as soon as the server starts", async () => {
@@ -380,7 +379,7 @@ describe("vite build", () => {
     const project = await createProject({
       "content/posts/a.md": "---\ntitle: A\n---\n",
       "content/posts/b.md": "---\ndate: 2026-03-27\n---\n",
-      "src/read.ts": 'export { content } from "tomekit/content";\n',
+      "src/read.ts": 'export { collections } from "tomekit/content";\n',
       "tomekit.config.ts": config,
     });
 

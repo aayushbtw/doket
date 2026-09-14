@@ -4,14 +4,12 @@ import { isMap, isNode, isScalar, isSeq, parseDocument } from "yaml";
 import type { Document as YamlDocument } from "yaml";
 
 import type { Issue } from "./errors";
-import type { BaseDocument, StandardSchema } from "./index";
+import type { Source, StandardSchema } from "./index";
 import { assertContentValue, isPlainObject } from "./value";
 
 const FRONTMATTER = /^---\r?\n(?:(?<data>[\s\S]*?)\r?\n)?---(?:\r?\n|$)/u;
 
 const EXTENSION = /\.[^./]+$/u;
-
-const RESERVED = ["content", "file"] as const;
 
 interface ParseInput {
   /** Relative to the collection directory, eg `guides/setup.md`. */
@@ -19,15 +17,16 @@ interface ParseInput {
   /** Relative to the project root. */
   filePath: string;
   schema: StandardSchema;
-  source: string;
+  /** The file's full text, frontmatter included. */
+  text: string;
 }
 
 type ParseResult =
-  | { document: BaseDocument; issues?: undefined; warnings: Issue[] }
+  | { issues?: undefined; source: Source<object> }
   | { issues: Issue[] };
 
-function position(source: string, offset: number) {
-  const before = source.slice(0, offset);
+function position(text: string, offset: number) {
+  const before = text.slice(0, offset);
 
   return {
     column: offset - before.lastIndexOf("\n"),
@@ -81,14 +80,14 @@ function offsetOf(
   return offset;
 }
 
-/** Validates a file's frontmatter and builds its document. Reads nothing from disk. */
+/** Validates a file's frontmatter and builds its source. Reads nothing from disk. */
 async function parse({
   file,
   filePath,
   schema,
-  source,
+  text,
 }: ParseInput): Promise<ParseResult> {
-  const match = FRONTMATTER.exec(source);
+  const match = FRONTMATTER.exec(text);
   const frontmatter = match?.groups?.data;
 
   const yaml =
@@ -108,7 +107,7 @@ async function parse({
 
     const start = match[0].indexOf("\n") + 1;
 
-    return { ...position(source, start + offset), message };
+    return { ...position(text, start + offset), message };
   }
 
   function issueAtKeys(message: string, keys: readonly string[]): Issue {
@@ -152,29 +151,17 @@ async function parse({
     return { issues: [{ message: "the schema must produce an object" }] };
   }
 
-  const warnings = RESERVED.flatMap((key) =>
-    key in value
-      ? [
-          issueAtKeys(
-            `frontmatter "${key}" is ignored, since tomekit sets \`${key}\``,
-            [key]
-          ),
-        ]
-      : []
-  );
-
   const slug = "slug" in value ? value.slug : undefined;
 
   return {
-    document: {
-      ...value,
-      content: match ? source.slice(match[0].length) : source,
+    source: {
+      body: match ? text.slice(match[0].length) : text,
       file: { name: path.basename(file), path: filePath },
+      metadata: value,
       slug: isSlug(slug)
         ? slug
         : file.split(path.sep).join("/").replace(EXTENSION, ""),
     },
-    warnings,
   };
 }
 

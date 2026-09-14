@@ -22,7 +22,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 | --- | --- | --- |
 | Public types + config | `index.ts` | Types, `define*` helpers and the error classes. No IO |
 | Runtime | `query.ts`, `content.ts` | Ships to users' servers. Keep it tiny |
-| Pure core | `errors/` (one class per file), `value.ts` (`ContentValue` and its checks), `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
+| Pure core | `errors/` (one class per file), `value.ts` (`ContentValue` and its checks), `config.ts` (config checks), `parse.ts`, `document.ts` (a source plus a transform result), `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
 | IO per collection | `collection.ts` | Reads files, runs transforms, returns `{ entries, errors, warnings }` |
 | State | `loader.ts` (`ContentLoader`) | Owns config, caches and the in-flight build. Knows nothing about how errors are shown |
 | Adapter | `vite.ts` | Maps Vite hooks to loader calls and reports results. No content logic |
@@ -38,7 +38,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 - **Return problems, don't throw them.** Lower layers return results (`{ document } | { issues }`, `{ entries, errors }`). The throw-or-report decision is made once, in the adapter: `vite build` throws, dev logs the errors, shows them in the overlay and serves the files that work.
 - **Collect, don't stop.** Report every broken file in one pass.
 - **Point at the source.** A content problem is a `ContentError` printed as `file:line:column: message`, with `file` relative to the root. When a key is missing, point at the deepest parent that exists. With no frontmatter at all, leave line and column out.
-- **Messages name the fix.** Say what went wrong, then what to do: ``transform changed slug "a" to "b". Set `slug` in the frontmatter instead``.
+- **Messages name the fix.** Say what went wrong, then what to do: ``transform returned "url", but it can only return `metadata` and `body`. Put derived values inside `metadata` instead``.
 - **Warnings state the consequence**: `directory "x" does not exist, so content.posts is empty`.
 - Only the adapter adds the `[tomekit]` prefix and talks to the logger. Lower layers return plain strings.
 - **Every thrown error is a class in `src/errors/`**, one per file, exported from `src/errors/index.ts`. No `throw new Error(...)` in `src/`. Classes extend a category (`ConfigError`, `ContentError`, `TransformError`, `PluginError`), which extends `TomekitError`. Each sets `name` explicitly, and its constructor takes data and builds the message, so the wording lives with the class. Add a class per distinct failure, not per call site.
@@ -85,17 +85,11 @@ The linter enforces most of these, so match them up front instead of relying on 
 - Put options objects with defaults in the signature: `function tomekit({ config = "tomekit.config.ts" }: TomekitOptions = {})`.
 - Name the value a function returns (`serialize`, `accessor`, `summary`) or the action it takes (`loadCollection`, `writeTypes`).
 
-## Decisions already made (do not reopen)
+## Internal docs
 
-- No Effect or other FP framework: a large dependency for a one-dependency library. Use the layering above instead.
-- Generated files stay in `.tomekit/`, never in `src/` or the root. `Register`-style module augmentation was rejected.
-- No type-level "is serializable" check on transform output: it fails on recursive AST types. Validate at runtime in `value.ts` (`assertContentValue`) and report the key path.
-- Aggregate types go in `.tomekit/content.d.ts`, not `content/index.d.ts`, so a collection can be named `index`.
-- Minimum Vite is 8. Backwards compatibility is not a goal yet, so prefer current APIs over deprecated ones.
-- No singletons or `getInstance`: each plugin instance gets its own loader.
-- Every error class is exported from `tomekit` in an explicit list, so users check `instanceof` instead of matching `name`. `vite build` wraps plugin errors, so ours sit under `error.errors`; the docs say so.
-- `vite.ts` keeps Vite hook context (`root`, `logger`, `server`) and report state in closure variables, the usual plugin shape. The "state lives in a class" rule is for content state, which `ContentLoader` holds. Don't wrap the plugin in a class.
-- Content is walked twice, by `assertContentValue` and then `serialize`. Measured: the check costs about 2/3 of serialize time, a few ms per build. Keep them separate; merging would mix two concerns.
-- Collections are read as objects (`content.posts.all`, `content[name]`), not through `getCollection(name)`. Property access keeps completion, go-to-definition and rename, per-collection imports load one collection, and a function would type the same while adding a second way to do it.
-- No sort option on collections: `all` stays in file name order and users call `toSorted`. One line for them, and a page often needs its own order anyway.
-- Error classes get a one-line summary each. The single `@example` lives on `TomekitError`, not on every class.
+`docs/` is gitignored and holds what doesn't belong in this file. Read both before designing or naming anything:
+
+- `docs/naming.md`: one word per concept, and the shape of the reading API
+- `docs/decisions.md`: settled decisions; don't reopen them unless the user asks
+
+Record a new decision or name there, not here.

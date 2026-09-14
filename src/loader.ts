@@ -18,14 +18,12 @@ import { isPlainObject } from "./value";
 
 const MODULE_ID = "tomekit/content";
 
-/** The generated modules and what happened while building them. */
+/** The generated module and what happened while building it. */
 interface Build {
-  /** Source of each `tomekit/content/<name>` module. */
-  collections: Map<string, string>;
-  /** Broken files, left out of `collections`. */
+  /** JavaScript for the `tomekit/content` module. */
+  code: string;
+  /** Broken files, left out of `code`. */
   errors: ContentError[];
-  /** Source of the `tomekit/content` module. */
-  index: string;
   /** Relative to the root, when this build rewrote them. */
   typesWritten: string | undefined;
   warnings: string[];
@@ -197,9 +195,9 @@ class ContentLoader {
     let typesWritten: string | undefined;
 
     if (types !== false) {
-      const generated = loaded.map(({ entries, name }) => ({
+      const generated = loaded.map(({ documents, name }) => ({
         name,
-        slugs: entries.map((entry) => entry.slug),
+        slugs: documents.map((document) => document.slug),
       }));
 
       if (await writeTypes(types, configPath, generated)) {
@@ -216,34 +214,19 @@ class ContentLoader {
       }
     }
 
-    const imports = loaded.map(
-      ({ name }, index) =>
-        `import c${index} from ${JSON.stringify(`${MODULE_ID}/${name}`)};`
-    );
+    const byName = loaded.map(({ documents, name }) => {
+      const pairs = documents.map(
+        ({ code, slug }) => `[${JSON.stringify(slug)},${code}]`
+      );
 
-    const keys = loaded.map(
-      ({ name }, index) => `${JSON.stringify(name)}:c${index}`
-    );
+      return `${JSON.stringify(name)}:createCollection([${pairs.join(",")}])`;
+    });
 
     return {
-      collections: new Map(
-        loaded.map(({ entries, name }) => {
-          const pairs = entries.map(
-            ({ code, slug }) => `[${JSON.stringify(slug)},${code}]`
-          );
-
-          return [
-            name,
-            `import { createCollection } from "tomekit/query";
-export default createCollection([${pairs.join(",")}]);
+      code: `import { createCollection, createCollections } from "tomekit/query";
+export const collections = createCollections({${byName.join(",")}});
 `,
-          ];
-        })
-      ),
       errors: loaded.flatMap((collection) => collection.errors),
-      index: `${imports.join("\n")}
-export const content = {${keys.join(",")}};
-`,
       typesWritten,
       warnings,
     };

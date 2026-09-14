@@ -2,18 +2,19 @@ import { createHash } from "node:crypto";
 import { glob, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { ContentError, SlugChangedError } from "./errors";
+import { assertTransformResult, buildDocument } from "./document";
+import { ContentError } from "./errors";
 import { Skipped } from "./index";
 import type { CollectionConfig } from "./index";
 import { parse } from "./parse";
 import type { ParseResult } from "./parse";
 import { serialize } from "./serialize";
-import { assertContentValue, isFields } from "./value";
 import type { ContentValue } from "./value";
 
 const DEFAULT_INCLUDE = "**/*.md";
 
-interface Entry {
+/** A document as the build needs it: its output, the code for it, and where it came from. */
+interface BuiltDocument {
   /** `output` as JavaScript source. */
   code: string;
   filePath: string;
@@ -22,18 +23,18 @@ interface Entry {
   slug: string;
 }
 
-/** A file's last result, reused while its source and the config are unchanged. */
-type FileCache = Map<string, { entry: Entry; hash: string }>;
+/** A file's last result, reused while its text and the config are unchanged. */
+type FileCache = Map<string, { document: BuiltDocument; hash: string }>;
 
 interface CollectionResult {
   /** Every kept document, in file name order. Broken files are left out. */
-  entries: Entry[];
+  documents: BuiltDocument[];
   errors: ContentError[];
   warnings: string[];
 }
 
 type FileResult =
-  | { entry: Entry; errors?: undefined; warnings: string[] }
+  | { document: BuiltDocument; errors?: undefined }
   | { errors: ContentError[] };
 
 function includePatterns(collection: CollectionConfig): string[] {
@@ -62,8 +63,8 @@ function skip(reason?: string): Skipped {
   return new Skipped(reason);
 }
 
-function hash(source: string): string {
-  return createHash("sha1").update(source).digest("base64");
+function hash(text: string): string {
+  return createHash("sha1").update(text).digest("base64");
 }
 
 async function isDirectory(directory: string): Promise<boolean> {
@@ -79,13 +80,14 @@ async function loadCollection(
   { cache }: { cache?: FileCache } = {}
 ): Promise<CollectionResult> {
   const directory = path.resolve(root, collection.directory);
+  const empty = `collections.get(${JSON.stringify(name)}) is empty`;
 
   if (!(await isDirectory(directory))) {
     return {
-      entries: [],
+      documents: [],
       errors: [],
       warnings: [
-        `${name}: directory "${collection.directory}" does not exist, so content.${name} is empty`,
+        `${name}: directory "${collection.directory}" does not exist, so ${empty}`,
       ],
     };
   }
@@ -105,7 +107,7 @@ async function loadCollection(
 
   if (files.length === 0) {
     warnings.push(
-      `${name}: no files in "${collection.directory}" match ${JSON.stringify(collection.include ?? DEFAULT_INCLUDE)}, so content.${name} is empty`
+      `${name}: no files in "${collection.directory}" match ${JSON.stringify(collection.include ?? DEFAULT_INCLUDE)}, so ${empty}`
     );
   }
 
@@ -113,9 +115,9 @@ async function loadCollection(
     files.map(
       async (file) =>
         await loadFile(name, collection, file, {
+          absolutePath: path.join(directory, file),
           cache,
           filePath: path.relative(root, path.join(directory, file)),
-          source: path.join(directory, file),
         })
     )
   );
@@ -131,8 +133,8 @@ async function loadCollection(
   }
 
   const errors: ContentError[] = [];
-  const bySlug = new Map<string, Entry>();
-  const entries: Entry[] = [];
+  const bySlug = new Map<string, BuiltDocument>();
+  const documents: BuiltDocument[] = [];
 
   for (const result of results) {
     if (result.errors) {
@@ -140,29 +142,28 @@ async function loadCollection(
       continue;
     }
 
-    warnings.push(...result.warnings);
-    const { entry } = result;
+    const { document } = result;
 
-    if (entry.output instanceof Skipped) {
+    if (document.output instanceof Skipped) {
       continue;
     }
 
-    const first = bySlug.get(entry.slug);
+    const first = bySlug.get(document.slug);
 
     if (first !== undefined) {
       errors.push(
-        new ContentError(entry.filePath, {
-          message: `slug "${entry.slug}" is already used by ${first.filePath}`,
+        new ContentError(document.filePath, {
+          message: `slug "${document.slug}" is already used by ${first.filePath}`,
         })
       );
       continue;
     }
 
-    bySlug.set(entry.slug, entry);
-    entries.push(entry);
+    bySlug.set(document.slug, document);
+    documents.push(document);
   }
 
-  return { entries, errors, warnings };
+  return { documents, errors, warnings };
 }
 
 async function loadFile(
@@ -170,10 +171,10 @@ async function loadFile(
   collection: CollectionConfig,
   file: string,
   {
+    absolutePath,
     cache,
     filePath,
-    source: sourcePath,
-  }: { cache?: FileCache; filePath: string; source: string }
+  }: { absolutePath: string; cache?: FileCache; filePath: string }
 ): Promise<FileResult> {
   function failure(cause: unknown): FileResult {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -183,25 +184,25 @@ async function loadFile(
     };
   }
 
-  let source: string;
+  let text: string;
 
   try {
-    source = await readFile(sourcePath, "utf-8");
+    text = await readFile(absolutePath, "utf-8");
   } catch (error) {
     return failure(error);
   }
 
-  const sourceHash = hash(source);
+  const textHash = hash(text);
   const cached = cache?.get(file);
 
-  if (cached?.hash === sourceHash) {
-    return { entry: cached.entry, warnings: [] };
+  if (cached?.hash === textHash) {
+    return { document: cached.document };
   }
 
   let parsed: ParseResult;
 
   try {
-    parsed = await parse({ file, filePath, schema: collection.schema, source });
+    parsed = await parse({ file, filePath, schema: collection.schema, text });
   } catch (error) {
     return failure(error);
   }
@@ -212,45 +213,31 @@ async function loadFile(
     };
   }
 
-  const { document } = parsed;
+  const { source } = parsed;
 
   let output: ContentValue | Skipped;
   let code = "";
 
   try {
-    const result = collection.transform
-      ? await collection.transform(document, { collection: name, skip })
-      : document;
+    const result: unknown = collection.transform
+      ? await collection.transform(source, { collection: name, skip })
+      : {};
 
     if (result instanceof Skipped) {
       output = result;
     } else {
-      assertContentValue(result);
-
-      if (
-        isFields(result) &&
-        "slug" in result &&
-        result.slug !== document.slug
-      ) {
-        throw new SlugChangedError(document.slug, result.slug);
-      }
-
-      output = result;
-      code = serialize(result);
+      assertTransformResult(result);
+      output = buildDocument(source, result);
+      code = serialize(output);
     }
   } catch (error) {
     return failure(error);
   }
 
-  const entry = { code, filePath, output, slug: document.slug };
-  cache?.set(file, { entry, hash: sourceHash });
+  const document = { code, filePath, output, slug: source.slug };
+  cache?.set(file, { document, hash: textHash });
 
-  return {
-    entry,
-    warnings: parsed.warnings.map(
-      (warning) => new ContentError(filePath, warning).message
-    ),
-  };
+  return { document };
 }
 
-export { type Entry, type FileCache, inCollection, loadCollection };
+export { type BuiltDocument, type FileCache, inCollection, loadCollection };

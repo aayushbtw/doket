@@ -10,10 +10,10 @@ import {
   MissingPluginError,
   PluginError,
   PluginNotReadyError,
-  SlugChangedError,
   TomekitError,
   TransformError,
-  UnknownCollectionError,
+  TransformResultError,
+  UnknownTransformFieldError,
   UnserializableInstanceError,
   UnserializableValueError,
 } from "../src/errors";
@@ -28,9 +28,9 @@ describe("errors", () => {
       [new BrokenContentError([]), TomekitError],
       [new UnserializableValueError("a function", "a"), TransformError],
       [new UnserializableInstanceError("Author", "a"), TransformError],
-      [new SlugChangedError("a", "b"), TransformError],
+      [new TransformResultError(), TransformError],
+      [new UnknownTransformFieldError("url"), TransformError],
       [new MissingPluginError(), PluginError],
-      [new UnknownCollectionError("tomekit/content/a", []), PluginError],
       [new PluginNotReadyError(), PluginError],
     ] as const;
 
@@ -80,17 +80,5 @@ describe("errors", () => {
       "1 content file has errors:\na.md:2: title: bad\na.md:3: date: bad"
     );
     expect(error.errors).toHaveLength(2);
-  });
-
-  it("lists the known collections when one does not exist", () => {
-    expect(
-      new UnknownCollectionError("tomekit/content/drafts", ["posts", "notes"])
-        .message
-    ).toBe(
-      'tomekit/content/drafts does not exist. Collections in the config: "posts", "notes".'
-    );
-    expect(
-      new UnknownCollectionError("tomekit/content/a", []).message
-    ).toContain("Collections in the config: none.");
   });
 });

@@ -3,11 +3,16 @@ import { z } from "zod";
 
 import { defineCollection, defineConfig } from "../src/index";
 import type {
-  BaseDocument,
   Collection,
-  Content,
+  InferDocument,
+  Source,
   TransformContext,
 } from "../src/index";
+
+// What the generated `collections.get(name)` returns, without generated slug types.
+declare function read<TCollection>(
+  collection: TCollection
+): Collection<InferDocument<TCollection>>;
 
 const config = defineConfig({
   collections: {
@@ -23,69 +28,102 @@ const config = defineConfig({
         tags: z.array(z.string()),
         title: z.string(),
       }),
-      transform: (document, { skip }) =>
-        document.title === ""
+      transform: ({ metadata }, { skip }) =>
+        metadata.title === ""
           ? skip()
-          : { date: document.date, tags: document.tags, title: document.title },
+          : {
+              metadata: {
+                date: metadata.date,
+                tags: metadata.tags,
+                title: metadata.title,
+              },
+            },
     }),
   },
 });
 
-declare const content: Content<typeof config>;
+const notes = read(config.collections.notes);
 
-export const title: string | undefined = content.posts.all[0]?.title;
+const posts = read(config.collections.posts);
 
-export const slug: string | undefined = content.notes.get("a")?.slug;
+const [firstPost] = posts.documents();
 
-export const file: string | undefined = content.notes.all[0]?.file.path;
+const [firstNote] = notes.documents();
 
-export const slugs: readonly string[] = content.notes.slugs;
+export const title: string | undefined = firstPost?.metadata.title;
 
-const tagged = content.posts.all.find(
-  (post): post is typeof post & { tags: [string, ...string[]] } =>
-    post.tags.length > 0
-);
+export const slug: string | undefined = notes.get("a")?.slug;
 
-export const firstTag: string | undefined = tagged?.tags[0];
+export const file: string | undefined = firstNote?.file.path;
+
+export const body: string | undefined = firstNote?.body;
+
+export const order: number | undefined = firstNote?.metadata.order;
+
+export const slugs: readonly string[] = notes.slugs();
+
+const tagged = posts
+  .documents()
+  .find(
+    (
+      post
+    ): post is typeof post & { metadata: { tags: [string, ...string[]] } } =>
+      post.metadata.tags.length > 0
+  );
+
+export const firstTag: string | undefined = tagged?.metadata.tags[0];
 
 // @ts-expect-error a skipped document is never part of the output
-export const skipped: "skipped" = content.posts.all[0];
+export const skipped: "skipped" = firstPost;
 
-// @ts-expect-error unknown fields are rejected
-export type Author = (typeof content.posts.all)[number]["author"];
+type Post = NonNullable<typeof firstPost>;
 
-// @ts-expect-error documents cannot be mutated through `all`
-export type Push = (typeof content.posts.all)["push"];
+// @ts-expect-error unknown metadata fields are rejected
+export type Author = Post["metadata"]["author"];
+
+// @ts-expect-error documents cannot be mutated through `documents()`
+export type Push = ReturnType<typeof posts.documents>["push"];
 
 // @ts-expect-error collections not in the config do not exist
-export type Drafts = (typeof content)["drafts"];
+export type Drafts = (typeof config.collections)["drafts"];
+
+// A known slug returns its document; any other string may not exist until `has` says so.
+declare const known: Collection<{ title: string }, "a" | "b", "a" | "b">;
+
+declare const fromRoute: string;
+
+export const knownTitle: string = known.get("a").title;
+
+export const routeTitle: string | undefined = known.get(fromRoute)?.title;
+
+// @ts-expect-error a slug from a plain string may not exist
+export const uncheckedTitle: string = known.get(fromRoute).title;
+
+export const checkedTitle: string = known.has(fromRoute)
+  ? known.get(fromRoute).title
+  : "";
 
 // Collections with different documents can still be read together.
-type AnyDocument =
-  | (typeof content.notes.all)[number]
-  | (typeof content.posts.all)[number];
-
-export const everyDocument: AnyDocument[] = Object.values(content).flatMap(
-  (collection): readonly AnyDocument[] => collection.all
-);
+export const everyDocument: (Post | NonNullable<typeof firstNote>)[] = [
+  ...notes.documents(),
+  ...posts.documents(),
+];
 
 // A generic helper takes any collection whose documents fit.
 export function titles<TDocument extends { title: string }>(
   collection: Collection<TDocument>
 ): string[] {
-  return collection.all.map((document) => document.title);
+  return collection.documents().map((document) => document.title);
 }
 
-declare const slugged: Collection<{ title: string }, "a" | "b">;
-
-export const sluggedTitles: string[] = titles(slugged);
+export const knownTitles: string[] = titles(known);
 
 // One transform shared by several collections keeps each schema's fields.
-function withUrl<TDocument extends BaseDocument>(
-  { content: _content, file: _file, ...document }: TDocument,
+function withUrl<TMetadata extends object>(
+  { metadata, slug: key }: Source<TMetadata>,
   { collection }: TransformContext
 ) {
-  return { ...document, url: `/${collection}/${document.slug}` };
+  return { metadata: { ...metadata, url: `/${collection}/${key}` } };
 }
 
 const inline = defineConfig({
@@ -93,19 +131,21 @@ const inline = defineConfig({
     drafts: {
       directory: "content/drafts",
       schema: z.object({ title: z.string() }),
-      transform: async (document, { skip }) => {
+      transform: async ({ metadata }, { skip }) => {
         await Promise.resolve();
 
-        return document.title === "" ? skip() : { heading: document.title };
+        return metadata.title === ""
+          ? skip()
+          : { metadata: { heading: metadata.title } };
       },
     },
     named: {
       directory: "content/named",
       schema: z.object({ order: z.number() }),
-      transform: (_document, { collection }) => {
+      transform: (_source, { collection }) => {
         const name: "named" = collection;
 
-        return { name };
+        return { metadata: { name } };
       },
     },
     notes: defineCollection({
@@ -116,6 +156,11 @@ const inline = defineConfig({
       directory: "content/pages",
       schema: z.object({ order: z.number() }),
     },
+    rendered: {
+      directory: "content/rendered",
+      schema: z.object({ order: z.number() }),
+      transform: ({ body: text }) => ({ body: text.length }),
+    },
     shared: {
       directory: "content/shared",
       schema: z.object({ order: z.number() }),
@@ -124,23 +169,37 @@ const inline = defineConfig({
   },
 });
 
-declare const inlineContent: Content<typeof inline>;
+const [draft] = read(inline.collections.drafts).documents();
 
-export const heading: string | undefined = inlineContent.drafts.all[0]?.heading;
+export const heading: string | undefined = draft?.metadata.heading;
 
-export const pageOrder: number | undefined = inlineContent.pages.all[0]?.order;
+// @ts-expect-error a transform's metadata replaces the schema's
+export type DraftTitle = NonNullable<typeof draft>["metadata"]["title"];
 
-export const noteSlug: string | undefined = inlineContent.notes.all[0]?.slug;
+const [page] = read(inline.collections.pages).documents();
 
-const [draft] = inlineContent.drafts.all;
+export const pageOrder: number | undefined = page?.metadata.order;
 
-// @ts-expect-error a transform's output replaces the document
-export type DraftTitle = NonNullable<typeof draft>["title"];
+export const pageBody: string | undefined = page?.body;
 
-export const sharedUrl: string | undefined = inlineContent.shared.all[0]?.url;
+const [rendered] = read(inline.collections.rendered).documents();
 
-export const sharedOrder: number | undefined =
-  inlineContent.shared.all[0]?.order;
+export const renderedBody: number | undefined = rendered?.body;
+
+export const renderedOrder: number | undefined = rendered?.metadata.order;
+
+const [shared] = read(inline.collections.shared).documents();
+
+export const sharedUrl: string | undefined = shared?.metadata.url;
+
+export const sharedOrder: number | undefined = shared?.metadata.order;
+
+export const extraField = defineCollection({
+  directory: "content/extra",
+  schema: z.object({}),
+  // @ts-expect-error a transform cannot add fields documents do not have
+  transform: () => ({ url: "/extra" }),
+});
 
 // A union schema keeps each member's fields, with or without a transform.
 const unions = defineConfig({
@@ -158,29 +217,27 @@ const unions = defineConfig({
         z.object({ kind: z.literal("video"), url: z.string() }),
         z.object({ kind: z.literal("quote"), text: z.string() }),
       ]),
-      transform: (document) =>
-        document.kind === "video"
-          ? { slug: document.slug, src: document.url }
-          : { quote: document.text, slug: document.slug },
+      transform: ({ metadata }) =>
+        metadata.kind === "video"
+          ? { metadata: { src: metadata.url } }
+          : { metadata: { quote: metadata.text } },
     },
   },
 });
 
-declare const unionContent: Content<typeof unions>;
-
-const [media] = unionContent.media.all;
+const [media] = read(unions.collections.media).documents();
 
 export const mediaText: string | undefined =
-  media?.kind === "quote" ? media.text : media?.slug;
+  media?.metadata.kind === "quote" ? media.metadata.text : media?.slug;
 
-const [sharedMedia] = unionContent.shared.all;
+const [sharedMedia] = read(unions.collections.shared).documents();
 
 export const sharedSrc: string | undefined =
-  sharedMedia !== undefined && "src" in sharedMedia
-    ? sharedMedia.src
-    : sharedMedia?.quote;
+  sharedMedia !== undefined && "src" in sharedMedia.metadata
+    ? sharedMedia.metadata.src
+    : sharedMedia?.metadata.quote;
 
-// A schema must produce an object, since its output becomes the document's fields.
+// A schema must produce an object, since its output becomes the document's metadata.
 export const stringCollection = defineCollection({
   directory: "content/bad",
   // @ts-expect-error a schema that produces a string is rejected

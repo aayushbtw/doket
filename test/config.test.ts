@@ -32,21 +32,4 @@ describe("configIssues", () => {
       )
     );
   });
-
-  it("rejects names that generate the same type", () => {
-    expect(
-      issues("blog_posts", "blogPosts", "posts", "postsSlug", "anyDocument")
-    ).toStrictEqual([
-      'collection "anyDocument" generates the type AnyDocument, which tomekit already exports. Rename it.',
-      'collections "blog_posts" and "blogPosts" generate the same type BlogPosts. Rename all but one.',
-      'collections "blog_posts" and "blogPosts" generate the same type BlogPostsSlug. Rename all but one.',
-      'collections "posts" and "postsSlug" generate the same type PostsSlug. Rename all but one.',
-    ]);
-  });
-
-  it("rejects names that differ only in case", () => {
-    expect(issues("posts", "postS")).toStrictEqual([
-      'collections "posts" and "postS" differ only in case, so their generated files collide on case-insensitive file systems. Rename all but one.',
-    ]);
-  });
 });

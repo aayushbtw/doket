@@ -1,4 +1,4 @@
-import type { Collection, Prettify } from "./query";
+import type { Prettify } from "./query";
 import type { ContentValue } from "./value";
 
 /**
@@ -38,30 +38,37 @@ interface FileInfo {
   path: string;
 }
 
-/** The fields tomekit adds to every document, whatever its schema. */
-interface BaseDocument {
-  /** The file's body, after the frontmatter block. */
-  content: string;
+/**
+ * A document before `transform`: its frontmatter as the schema produced it,
+ * and the file's text.
+ *
+ * @example
+ * ```ts
+ * // One transform shared by several collections
+ * function withUrl<TMetadata extends object>(
+ *   { metadata, slug }: Source<TMetadata>,
+ *   { collection }: TransformContext
+ * ) {
+ *   return { metadata: { ...metadata, url: `/${collection}/${slug}` } };
+ * }
+ * ```
+ */
+interface Source<TMetadata = unknown> {
+  /** The file's text after the frontmatter block. */
+  body: string;
   /** Where the file lives, eg `{ name: "setup.md", path: "content/guides/setup.md" }`. */
   file: FileInfo;
+  /** The frontmatter, as the collection's schema produced it. */
+  metadata: TMetadata;
   /**
-   * The frontmatter `slug` when it is a string, otherwise the path inside the
-   * collection directory without the extension, eg `guides/setup`.
+   * The `slug` in the frontmatter when it is a non-empty string, otherwise the
+   * path inside the collection directory without the extension, eg `guides/setup`.
    */
   slug: string;
 }
 
-/** What `transform` receives: the validated frontmatter plus {@link BaseDocument}. */
-// Distributes, so each member of a union schema keeps its own fields.
-type Document<TSchema> =
-  InferOutput<TSchema> extends infer TOutput
-    ? TOutput extends unknown
-      ? Prettify<Omit<TOutput, keyof BaseDocument> & BaseDocument>
-      : never
-    : never;
-
 /**
- * Returned from `transform` to leave a document out of its collection. Create
+ * Returned from `transform` to leave a file out of its collection. Create
  * one with `skip()` from {@link TransformContext}.
  */
 class Skipped {
@@ -72,36 +79,39 @@ class Skipped {
     this.#reason = reason;
   }
 
-  /** Why the document was skipped, eg `"draft"`. */
+  /** Why the file was skipped, eg `"draft"`. */
   get reason(): string | undefined {
     return this.#reason;
   }
 }
 
-/**
- * The second argument to `transform`.
- *
- * @example
- * ```ts
- * // One transform shared by several collections
- * function withUrl<T extends BaseDocument>(document: T, { collection }: TransformContext) {
- *   return { ...document, url: `/${collection}/${document.slug}` };
- * }
- * ```
- */
+/** The second argument to `transform`. */
 interface TransformContext<TName extends string = string> {
-  /** The collection's key in the config, eg `posts`. */
+  /** The name of the collection, eg `posts`. */
   collection: TName;
   /**
-   * Leaves this document out of the collection. Return its result.
+   * Leaves this file out of the collection. Return its result.
    *
    * @example
    * ```ts
-   * transform: (document, { skip }) => (document.draft ? skip("draft") : document)
+   * transform: ({ metadata }, { skip }) => (metadata.draft ? skip("draft") : {})
    * ```
    */
   skip: (reason?: string) => Skipped;
 }
+
+/**
+ * What `transform` returns: a new `metadata` and/or `body`. Whatever it leaves
+ * out stays as it was.
+ */
+interface TransformResult {
+  /** Replaces the document's body, eg with rendered HTML. */
+  body?: unknown;
+  /** Replaces the document's metadata, eg to add derived fields. */
+  metadata?: unknown;
+}
+
+type TransformOutput = Skipped | TransformResult;
 
 /**
  * A glob pattern. Suggests common ones and accepts any string.
@@ -128,21 +138,20 @@ interface CollectionConfig<
   /** Validates each file's frontmatter, and must produce an object. A file without frontmatter is validated as `{}`. */
   schema: TSchema;
   /**
-   * Shapes each document at build time. Its return type becomes the type of
-   * the collection's documents. Return data only: plain objects, arrays,
-   * primitives, `Date`, `Map`, `Set`, `URL` or `RegExp`.
+   * Changes each document at build time. Return a new `metadata` and/or
+   * `body`, and their types become the document's. Return data only: plain
+   * objects, arrays, primitives, `Date`, `Map`, `Set`, `URL` or `RegExp`.
    *
    * @example
    * ```ts
-   * transform: ({ content, slug, title }) => ({
-   *   title,
-   *   html: marked.parse(content, { async: false }),
-   *   url: `/posts/${slug}`,
+   * transform: ({ body, metadata, slug }) => ({
+   *   body: marked.parse(body, { async: false }),
+   *   metadata: { ...metadata, url: `/posts/${slug}` },
    * })
    * ```
    */
   transform?: (
-    document: Document<TSchema>,
+    source: Source<InferOutput<TSchema>>,
     context: TransformContext
   ) => TOutput | Promise<TOutput>;
 }
@@ -154,7 +163,7 @@ interface Config<
     CollectionConfig
   >,
 > {
-  /** Keyed by the name you query them by, eg `posts` for `content.posts`. */
+  /** Keyed by collection name, eg `posts` for `collections.get("posts")`. */
   collections: TCollections;
 }
 
@@ -173,26 +182,44 @@ type PrettifyIfPlainObject<TValue> = TValue extends object
     : Prettify<TValue>
   : TValue;
 
+// `unknown` when a config has no transform; the whole `TransformOutput` when inference fell back to the constraint.
+type IsUntransformed<TOutput> = unknown extends TOutput
+  ? true
+  : [TransformOutput] extends [TOutput]
+    ? true
+    : false;
+
+// Distributes, so a transform that returns different shapes gives a union of documents.
+type DocumentFrom<TMetadata, TResult> = TResult extends unknown
+  ? {
+      body: TResult extends { body: infer TBody } ? TBody : string;
+      file: FileInfo;
+      metadata: TResult extends { metadata: infer TNewMetadata }
+        ? PrettifyIfPlainObject<TNewMetadata>
+        : TMetadata;
+      slug: string;
+    }
+  : never;
+
 /**
- * The type of a collection's documents. Prefer the generated types, eg
- * `Posts` from `tomekit/content`, which also narrow `slug`.
+ * The document type of a collection config, for the generated types in
+ * `.tomekit`. Users read `DocumentOf` from `tomekit/content`.
  *
- * @example
- * ```ts
- * const posts = defineCollection({ ... });
- * type Post = InferDocument<typeof posts>;
- * ```
+ * @internal
  */
 type InferDocument<TCollection> =
   TCollection extends CollectionConfig<infer TSchema, infer TOutput>
-    ? unknown extends TOutput
-      ? Document<TSchema>
-      : PrettifyIfPlainObject<Exclude<TOutput, Skipped>>
+    ? DocumentFrom<
+        InferOutput<TSchema>,
+        IsUntransformed<TOutput> extends true
+          ? Record<never, never>
+          : Exclude<Awaited<TOutput>, Skipped>
+      >
     : never;
 
 /**
- * Narrows a document's `slug`, when it has one, to the slugs that exist, for
- * the generated types in `.tomekit`.
+ * Narrows a document's `slug` to the slugs that exist, for the generated
+ * types in `.tomekit`.
  *
  * @internal
  */
@@ -201,17 +228,6 @@ type WithSlug<TDocument, TSlug extends string> = TDocument extends {
 }
   ? Prettify<Omit<TDocument, "slug"> & { slug: TSlug }>
   : TDocument;
-
-/**
- * The shape of `content` for a config, without generated slug types.
- *
- * @internal
- */
-type Content<TConfig extends Config = Config> = {
-  [TName in keyof TConfig["collections"]]: Collection<
-    InferDocument<TConfig["collections"][TName]>
-  >;
-};
 
 /**
  * Defines a collection outside the config, eg in its own file, with
@@ -229,7 +245,7 @@ type Content<TConfig extends Config = Config> = {
  */
 function defineCollection<
   TSchema extends StandardSchema<object>,
-  TOutput = Document<TSchema>,
+  TOutput extends TransformOutput = TransformOutput,
 >(
   collection: CollectionConfig<TSchema, TOutput>
 ): CollectionConfig<TSchema, TOutput> {
@@ -268,6 +284,7 @@ type InferredCollections<
 // produce an object is reported on `schema` instead of breaking inference.
 function defineConfig<
   TSchemas extends Record<string, StandardSchema>,
+  // Unconstrained: a constraint here makes inference fall back to it and lose each transform's output type.
   TOutputs extends { [TName in keyof TSchemas]: unknown },
 >(config: {
   collections: {
@@ -280,9 +297,9 @@ function defineConfig<
     };
   } & {
     [TName in keyof TOutputs]: {
-      /** Shapes each document at build time. Its return type becomes the type of the collection's documents. */
+      /** Changes each document at build time. Return a new `metadata` and/or `body`, and their types become the document's. */
       transform?: (
-        document: Document<TSchemas[TName & keyof TSchemas]>,
+        source: Source<InferOutput<TSchemas[TName & keyof TSchemas]>>,
         context: TransformContext<TName & string>
       ) => TOutputs[TName];
     };
@@ -294,18 +311,17 @@ function defineConfig(config: Config): Config {
 }
 
 export {
-  type BaseDocument,
   type CollectionConfig,
   type Config,
-  type Content,
   defineCollection,
   defineConfig,
-  type Document,
   type FileInfo,
   type InferDocument,
   Skipped,
+  type Source,
   type StandardSchema,
   type TransformContext,
+  type TransformResult,
   type WithSlug,
 };
 
@@ -321,10 +337,10 @@ export {
   MissingPluginError,
   PluginError,
   PluginNotReadyError,
-  SlugChangedError,
   TomekitError,
   TransformError,
-  UnknownCollectionError,
+  TransformResultError,
+  UnknownTransformFieldError,
   UnserializableInstanceError,
   UnserializableValueError,
 } from "./errors";

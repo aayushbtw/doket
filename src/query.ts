@@ -14,51 +14,130 @@ type Prettify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & Record<
  *
  * @example
  * ```ts
- * content.posts.all.filter((post) => post.tags.includes("vite"));
- * content.posts.get("hello-world")?.title;
- * content.posts.slugs; // ["hello-world", "setup"]
+ * const posts = collections.get("posts");
+ *
+ * posts.documents().filter((post) => post.metadata.tags.includes("vite"));
+ * posts.get("hello-world").metadata.title;
+ * posts.slugs(); // ["hello-world", "setup"]
  * ```
  */
-interface Collection<TDocument, TSlug extends string = string> {
+interface Collection<
+  TDocument,
+  TSlug extends string = string,
+  TKnownSlug extends TSlug = never,
+> {
   /** Every document, in file name order. Sort, filter and slice it like any array. */
-  readonly all: readonly TDocument[];
+  documents(this: void): readonly TDocument[];
   /**
-   * The document with this slug, or `undefined` if there is none. Suggests
-   * the slugs that exist, and accepts any string, eg a route param.
+   * The document with this slug. A slug that exists returns its document.
    *
    * @example
    * ```ts
-   * const post = content.posts.get(params.slug);
+   * posts.get("hello-world").metadata.title;
+   * ```
+   */
+  // Method syntax, so a collection with known slugs still fits a helper that takes `Collection<T>`.
+  // `TKnownSlug` is its own parameter, not a conditional on `TSlug`, which would stop that fit.
+  // Without known slugs it is `never`, so this overload takes nothing and every lookup may be `undefined`.
+  // `this: void` tells lint that destructuring a member from a collection is safe.
+  get(this: void, slug: TKnownSlug): TDocument;
+  /**
+   * The document with this slug, or `undefined` if there is none, eg for a
+   * route param.
+   *
+   * @example
+   * ```ts
+   * const post = posts.get(params.slug);
    * if (!post) throw notFound();
    * ```
    */
-  // Method syntax, so `Collection<T, "a">` still fits a helper that takes `Collection<T>`.
-  // `string & Record<never, never>` keeps the known slugs as suggestions while accepting any string.
-  // `this: void` tells lint that destructuring `get` from a collection is safe.
-  get(
-    this: void,
-    slug: TSlug | (string & Record<never, never>)
-  ): TDocument | undefined;
-  /** Every slug, in the same order as `all`. */
-  readonly slugs: readonly TSlug[];
+  get(this: void, slug: string): TDocument | undefined;
+  /**
+   * Whether a document has this slug. Narrows a route param to the
+   * collection's slugs, so `get` then returns the document.
+   *
+   * @example
+   * ```ts
+   * if (posts.has(params.slug)) posts.get(params.slug).metadata.title;
+   * ```
+   */
+  // Narrows to `TSlug`, not `TKnownSlug`: a predicate on `TKnownSlug` would stop the fit described above.
+  has(this: void, slug: string): slug is TSlug;
+  /** Every slug, in the same order as `documents()`. */
+  slugs(this: void): readonly TSlug[];
+}
+
+/**
+ * Every collection, without the generated name and slug types.
+ *
+ * @internal
+ */
+interface Collections<TDocument> {
+  /** The collection with this name, or `undefined` if there is none. */
+  get(this: void, name: string): Collection<TDocument> | undefined;
+  /** Whether a collection has this name. */
+  has(this: void, name: string): boolean;
+  /** Every collection name, in config order. */
+  names(this: void): readonly string[];
 }
 
 /**
  * Wraps a collection's documents for the generated `tomekit/content` module:
- * each entry is `[slug, document]`.
+ * each pair is `[slug, document]`.
  *
  * @internal
  */
 function createCollection<TDocument>(
-  entries: readonly (readonly [string, TDocument])[]
+  pairs: readonly (readonly [string, TDocument])[]
 ): Collection<TDocument> {
-  const bySlug = new Map(entries);
+  const bySlug = new Map(pairs);
+  const documents = pairs.map(([, document]) => document);
+  const slugs = pairs.map(([slug]) => slug);
+
+  function get(slug: never): TDocument;
+  function get(slug: string): TDocument | undefined;
+  function get(slug: string): TDocument | undefined {
+    return bySlug.get(slug);
+  }
+
+  function has(slug: string): slug is string {
+    return bySlug.has(slug);
+  }
 
   return {
-    all: entries.map(([, document]) => document),
-    get: (slug) => bySlug.get(slug),
-    slugs: entries.map(([slug]) => slug),
+    documents: () => documents,
+    get,
+    has,
+    slugs: () => slugs,
   };
 }
 
-export { type Collection, createCollection, type Prettify };
+/**
+ * Builds the `collections` export of the generated `tomekit/content` module,
+ * keyed by name in config order.
+ *
+ * @internal
+ */
+function createCollections<TDocument>(
+  byName: Readonly<Record<string, Collection<TDocument>>>
+): Collections<TDocument> {
+  const names = Object.keys(byName);
+
+  function has(name: string): boolean {
+    return Object.hasOwn(byName, name);
+  }
+
+  return {
+    get: (name) => (has(name) ? byName[name] : undefined),
+    has,
+    names: () => names,
+  };
+}
+
+export {
+  type Collection,
+  type Collections,
+  createCollection,
+  createCollections,
+  type Prettify,
+};

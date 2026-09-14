@@ -86,46 +86,49 @@ async function typecheck(usage: string) {
 }
 
 describe("generated types", () => {
-  it("type content, named types and slugs through the tsconfig alias", async () => {
+  it("type collections, documents and slugs through the tsconfig alias", async () => {
     const output = await typecheck(`
-import { content, type AnyDocument, type CollectionName, type Posts, type PostsSlug } from "tomekit/content";
-import index from "tomekit/content/index";
-import posts from "tomekit/content/posts";
+import { collections, type CollectionName, type DocumentOf, type SlugOf } from "tomekit/content";
 
-const post: Posts | undefined = content.posts.get("hello");
-const title: string | undefined = post?.title;
-const slug: PostsSlug | undefined = post?.slug;
+const posts = collections.get("posts");
+const post: DocumentOf<"posts"> = posts.get("hello");
+const title: string = post.metadata.title;
+const body: string = post.body;
+const slug: SlugOf<"posts"> = post.slug;
 const fromRoute: string = "anything";
-posts.get(fromRoute);
-const slugs: readonly PostsSlug[] = posts.slugs;
-const order: number | undefined = index.get("home")?.order ?? content.index.all[0]?.order;
-const everything: AnyDocument[] = Object.values(content).map((collection) => collection.all).flat();
+const maybe: DocumentOf<"posts"> | undefined = posts.get(fromRoute);
+const checked: string = posts.has(fromRoute) ? posts.get(fromRoute).metadata.title : "";
+const slugs: readonly SlugOf<"posts">[] = posts.slugs();
+const order: number = collections.get("index").get("home").metadata.order;
+const dynamic: readonly DocumentOf[] = collections.get(fromRoute)?.documents() ?? [];
+const narrowed: readonly DocumentOf[] = collections.has(fromRoute) ? collections.get(fromRoute).documents() : [];
+const names: readonly CollectionName[] = collections.names();
+const everything: readonly DocumentOf[] = collections.names().flatMap((name) => collections.get(name).documents());
 
-function isCollection(name: string): name is CollectionName {
-  return Object.hasOwn(content, name);
-}
-
-const byName: readonly AnyDocument[] = isCollection(fromRoute) ? content[fromRoute].all : [];
-
-export { byName, everything, order, slug, slugs, title };
+export { body, checked, dynamic, everything, maybe, names, narrowed, order, slug, slugs, title };
 `);
 
     expect(output).toBe("");
   }, 30_000);
 
-  it("reject fields and slugs that do not exist", async () => {
+  it("reject fields, slugs and names that do not exist, and unchecked lookups", async () => {
     const output = await typecheck(`
-import { content, type CollectionName, type PostsSlug } from "tomekit/content";
+import { collections, type CollectionName, type DocumentOf, type SlugOf } from "tomekit/content";
 
-content.posts.all[0]?.author;
-const slug: PostsSlug = "missing";
+collections.get("posts").documents()[0]?.metadata.author;
+const slug: SlugOf<"posts"> = "missing";
 const name: CollectionName = "drafts";
+type Archive = DocumentOf<"archive">;
+const fromRoute: string = "anything";
+const unchecked: string = collections.get("posts").get(fromRoute).metadata.title;
 
-export { name, slug };
+export { name, slug, unchecked, type Archive };
 `);
 
     expect(output).toContain("author");
     expect(output).toContain('"missing"');
     expect(output).toContain('"drafts"');
+    expect(output).toContain('"archive"');
+    expect(output).toContain("possibly 'undefined'");
   }, 30_000);
 });

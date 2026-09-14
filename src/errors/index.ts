@@ -16,13 +16,13 @@ export { PluginError } from "./plugin-error";
 
 export { PluginNotReadyError } from "./plugin-not-ready-error";
 
-export { SlugChangedError } from "./slug-changed-error";
-
 export { TomekitError } from "./tomekit-error";
 
 export { TransformError } from "./transform-error";
 
-export { UnknownCollectionError } from "./unknown-collection-error";
+export { TransformResultError } from "./transform-result-error";
+
+export { UnknownTransformFieldError } from "./unknown-transform-field-error";
 
 export { UnserializableInstanceError } from "./unserializable-instance-error";
 

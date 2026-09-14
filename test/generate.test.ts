@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { typeName, writeTypes } from "../src/generate";
+import { writeTypes } from "../src/generate";
 import { createProject } from "./project";
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -19,16 +19,8 @@ async function project() {
   return created.root;
 }
 
-describe("typeName", () => {
-  it("turns a collection key into a type name", () => {
-    expect(typeName("posts")).toBe("Posts");
-    expect(typeName("blogPosts")).toBe("BlogPosts");
-    expect(typeName("case_studies")).toBe("CaseStudies");
-  });
-});
-
 describe("writeTypes", () => {
-  it("writes an index and one file per collection, with its slugs", async () => {
+  it("writes one file with every collection's name and slugs", async () => {
     const root = await project();
     const directory = path.join(root, ".tomekit");
 
@@ -41,48 +33,29 @@ describe("writeTypes", () => {
       ]
     );
 
-    const content = path.join(directory, "content");
     expect(changed).toBe(true);
-    const written = await readdir(content);
-    expect(written.toSorted()).toStrictEqual(["notes.d.ts", "posts.d.ts"]);
-    const posts = await readFile(path.join(content, "posts.d.ts"), "utf-8");
-    expect(posts).toContain('import type config from "../../tomekit.config";');
-    expect(posts).toContain(
-      'export type PostsSlug = "hello" | "guides/setup";'
-    );
-    expect(await readFile(path.join(content, "notes.d.ts"), "utf-8")).toContain(
-      "export type NotesSlug = never;"
-    );
-    expect(posts).toContain(
-      "declare const collection: _Collection<Posts, PostsSlug>;"
-    );
-    const index = await readFile(path.join(directory, "content.d.ts"), "utf-8");
-    expect(index).toContain(
-      '"posts": typeof import("./content/posts").default;'
-    );
-    expect(index).toContain("export type AnyDocument = Posts | Notes;");
-    expect(index).toContain('export type CollectionName = "posts" | "notes";');
+    expect(await readdir(directory)).toStrictEqual(["content.d.ts"]);
+    const types = await readFile(path.join(directory, "content.d.ts"), "utf-8");
+    expect(types).toContain('import type config from "../tomekit.config";');
+    expect(types).toContain('export type CollectionName = "posts" | "notes";');
+    expect(types).toContain('  "posts": "hello" | "guides/setup";');
+    expect(types).toContain('  "notes": never;');
+    expect(types).toContain("export declare const collections: {");
   });
 
-  it("reports no change when nothing differs, and removes dropped collections", async () => {
+  it("writes nothing when the types are unchanged", async () => {
     const root = await project();
     const directory = path.join(root, ".tomekit");
     const configPath = path.join(root, "tomekit.config.ts");
     const posts = { name: "posts", slugs: ["hello"] };
 
-    await writeTypes(directory, configPath, [
-      posts,
-      { name: "old", slugs: [] },
-    ]);
+    await writeTypes(directory, configPath, [posts]);
+
+    expect(await writeTypes(directory, configPath, [posts])).toBe(false);
     expect(
       await writeTypes(directory, configPath, [
-        posts,
-        { name: "old", slugs: [] },
+        { name: "posts", slugs: ["hello", "later"] },
       ])
-    ).toBe(false);
-    expect(await writeTypes(directory, configPath, [posts])).toBe(true);
-
-    const remaining = await readdir(path.join(directory, "content"));
-    expect(remaining).toStrictEqual(["posts.d.ts"]);
+    ).toBe(true);
   });
 });
