@@ -15,8 +15,9 @@ jobs:
           node-version: 24
           cache: true
           run-install: true
-      - run: vp check
-      - run: vp run -r build
+      # The site builds and deploys on Cloudflare, so CI covers only the library.
+      - run: vp check packages
+      - run: vp run --filter tomekit build
 
   test:
     runs-on: ubuntu-latest
@@ -31,4 +32,4 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: true
           run-install: true
-      - run: vp run -r test
+      - run: vp run --filter tomekit test

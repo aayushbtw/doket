@@ -42,7 +42,7 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
-    "prepublishOnly": "vp run -w check && vp test run && vp pack",
+    "prepublishOnly": "vp check && vp test run && vp pack",
     "test": "vp test run"
   },
   "dependencies": {
