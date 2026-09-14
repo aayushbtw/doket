@@ -179,3 +179,20 @@ export const sharedSrc: string | undefined =
   sharedMedia !== undefined && "src" in sharedMedia
     ? sharedMedia.src
     : sharedMedia?.quote;
+
+// A schema must produce an object, since its output becomes the document's fields.
+export const stringCollection = defineCollection({
+  directory: "content/bad",
+  // @ts-expect-error a schema that produces a string is rejected
+  schema: z.string(),
+});
+
+export const stringConfig = defineConfig({
+  collections: {
+    bad: {
+      directory: "content/bad",
+      // @ts-expect-error a schema that produces a string is rejected
+      schema: z.string(),
+    },
+  },
+});

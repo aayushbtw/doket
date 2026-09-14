@@ -105,7 +105,7 @@ interface TransformContext<TName extends string = string> {
 
 /** One collection: where its files are, how to validate them and what to return. */
 interface CollectionConfig<
-  TSchema extends StandardSchema = StandardSchema,
+  TSchema extends StandardSchema<object> = StandardSchema<object>,
   TOutput = unknown,
 > {
   /** Where the files live, relative to the project root, eg `content/posts`. */
@@ -118,7 +118,7 @@ interface CollectionConfig<
    * @default "**\/*.md"
    */
   include?: string | readonly string[];
-  /** Validates each file's frontmatter. A file without frontmatter is validated as `{}`. */
+  /** Validates each file's frontmatter, and must produce an object. A file without frontmatter is validated as `{}`. */
   schema: TSchema;
   /**
    * Shapes each document at build time. Its return type becomes the type of
@@ -221,7 +221,7 @@ type Content<TConfig extends Config = Config> = {
  * ```
  */
 function defineCollection<
-  TSchema extends StandardSchema,
+  TSchema extends StandardSchema<object>,
   TOutput = Document<TSchema>,
 >(
   collection: CollectionConfig<TSchema, TOutput>
@@ -234,7 +234,7 @@ type InferredCollections<
   TOutputs extends { [TName in keyof TSchemas]: unknown },
 > = {
   [TName in keyof TSchemas]: CollectionConfig<
-    TSchemas[TName],
+    Extract<TSchemas[TName], StandardSchema<object>>,
     Awaited<TOutputs[TName]>
   >;
 };
@@ -256,16 +256,21 @@ type InferredCollections<
  * ```
  */
 // Two mapped types so schemas are inferred before each `transform` is
-// contextually typed; one mapped type loses the output types.
+// contextually typed; one mapped type loses the output types. `TSchemas` is
+// unconstrained and `schema` checked on its own, so a schema that does not
+// produce an object is reported on `schema` instead of breaking inference.
 function defineConfig<
   TSchemas extends Record<string, StandardSchema>,
   TOutputs extends { [TName in keyof TSchemas]: unknown },
 >(config: {
   collections: {
     [TName in keyof TSchemas]: Omit<
-      CollectionConfig<TSchemas[TName]>,
-      "transform"
-    >;
+      CollectionConfig,
+      "schema" | "transform"
+    > & {
+      /** Validates each file's frontmatter, and must produce an object. A file without frontmatter is validated as `{}`. */
+      schema: TSchemas[TName] & StandardSchema<object>;
+    };
   } & {
     [TName in keyof TOutputs]: {
       /** Shapes each document at build time. Its return type becomes the type of the collection's documents. */
@@ -275,7 +280,9 @@ function defineConfig<
       ) => TOutputs[TName];
     };
   };
-}): Config<InferredCollections<TSchemas, TOutputs>> {
+}): Config<InferredCollections<TSchemas, TOutputs>>;
+// Loose on purpose: the parameter's `schema` intersection never matches the inferred return type.
+function defineConfig(config: Config): Config {
   return config;
 }
 
