@@ -16,10 +16,6 @@ allowBuilds:
 overrides:
   vite@*: "catalog:"
   vitest@*: "catalog:"
-  # Match the oxlint and oxfmt that vite-plus bundles, so ultracite's presets
-  # type-check against the same rule schemas that run.
-  oxfmt: 0.66.0
-  oxlint: 1.81.0
 peerDependencyRules:
   allowAny:
     - vite
