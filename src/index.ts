@@ -61,8 +61,9 @@ interface Source<TMetadata = unknown> {
   /** The frontmatter, as the collection's schema produced it. */
   metadata: TMetadata;
   /**
-   * The `slug` in the frontmatter when it is a non-empty string, otherwise the
-   * path inside the collection directory without the extension, eg `guides/setup`.
+   * The frontmatter's `slug`, whether or not the schema declares it, otherwise
+   * the path inside the collection directory without the extension, eg
+   * `guides/setup`. A `slug` that is not a non-empty string fails the file.
    */
   slug: string;
 }

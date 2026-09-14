@@ -126,32 +126,52 @@ async function parse({
 
   const data: unknown = yaml?.toJS() ?? {};
   assertContentValue(data);
+  // Read before the schema, which may strip keys it does not declare.
+  const slug = isPlainObject(data) && "slug" in data ? data.slug : undefined;
+
+  const slugIssues =
+    slug === undefined || isSlug(slug)
+      ? []
+      : [
+          issueAtKeys(
+            'slug: must be a non-empty string, eg "hello-world". Remove it to use the file path instead',
+            ["slug"]
+          ),
+        ];
+
   const result = await schema["~standard"].validate(data);
 
   if (result.issues) {
     return {
-      issues: result.issues.map((issue) => {
-        const keys = (issue.path ?? []).map((segment) =>
-          String(isKeyedSegment(segment) ? segment.key : segment)
-        );
+      issues: [
+        ...slugIssues,
+        ...result.issues.map((issue) => {
+          const keys = (issue.path ?? []).map((segment) =>
+            String(isKeyedSegment(segment) ? segment.key : segment)
+          );
 
-        const key = keys.join(".");
+          const key = keys.join(".");
 
-        return issueAtKeys(
-          key === "" ? issue.message : `${key}: ${issue.message}`,
-          keys
-        );
-      }),
+          return issueAtKeys(
+            key === "" ? issue.message : `${key}: ${issue.message}`,
+            keys
+          );
+        }),
+      ],
     };
   }
 
   const { value } = result;
 
   if (!isPlainObject(value)) {
-    return { issues: [{ message: "the schema must produce an object" }] };
+    return {
+      issues: [...slugIssues, { message: "the schema must produce an object" }],
+    };
   }
 
-  const slug = "slug" in value ? value.slug : undefined;
+  if (slugIssues.length > 0) {
+    return { issues: slugIssues };
+  }
 
   return {
     source: {

@@ -47,12 +47,44 @@ describe("parse", () => {
     });
   });
 
-  it("falls back to the file name for an empty frontmatter slug", async () => {
-    const result = await parseText('---\ntitle: Hello\nslug: ""\n---\n', {
-      schema: z.object({ slug: z.string(), title: z.string() }),
-    });
+  it("reads a frontmatter slug the schema does not declare", async () => {
+    const result = await parseText("---\ntitle: Hello\nslug: hi\n---\n");
 
-    expect(result).toMatchObject({ source: { slug: "hello" } });
+    expect(result).toMatchObject({
+      source: { metadata: { title: "Hello" }, slug: "hi" },
+    });
+  });
+
+  it.each(['""', "42", ""])(
+    "fails on a frontmatter slug of %j",
+    async (slug) => {
+      const result = await parseText(
+        `---\ntitle: Hello\nslug: ${slug}\n---\n`,
+        {
+          schema: z.object({ slug: z.unknown(), title: z.string() }),
+        }
+      );
+
+      expect(result).toStrictEqual({
+        issues: [
+          {
+            column: 1,
+            line: 3,
+            message:
+              'slug: must be a non-empty string, eg "hello-world". Remove it to use the file path instead',
+          },
+        ],
+      });
+    }
+  );
+
+  it("reports a bad slug together with schema issues", async () => {
+    const { issues = [] } = await parseText('---\nslug: ""\n---\n');
+
+    expect(issues.map((issue) => issue.message.split(":")[0])).toStrictEqual([
+      "slug",
+      "title",
+    ]);
   });
 
   it("leaves line and column out when there is no frontmatter", async () => {

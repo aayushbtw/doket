@@ -86,7 +86,7 @@ describe("loadCollection", () => {
     const withSlug = defineCollection({
       directory: "content/posts",
       include: "*.md",
-      schema: z.object({ slug: z.string().optional(), title: z.string() }),
+      schema: z.object({ title: z.string() }),
     });
 
     const root = await project({
