@@ -360,6 +360,9 @@ describe("vite build", () => {
     });
 
     await expect(result).rejects.toThrow("1 content file has errors:");
+    // The bundler wraps plugin errors and keeps the originals under `errors`.
+    const failure: unknown = await result.catch((error: unknown) => error);
+    expect(failure).toHaveProperty(["errors", 0, "name"], "BrokenContentError");
   });
 });
 

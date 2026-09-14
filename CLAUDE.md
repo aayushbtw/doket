@@ -22,7 +22,7 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 | --- | --- | --- |
 | Public types + config | `index.ts` | Types and `define*` helpers only. No IO |
 | Runtime | `query.ts`, `content.ts` | Ships to users' servers. Keep it tiny |
-| Pure core | `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
+| Pure core | `errors.ts`, `config.ts` (config checks), `parse.ts`, `serialize.ts`, `generate.ts` (source strings) | No disk, no Vite, no state. Input in, result out |
 | IO per collection | `collection.ts` | Reads files, runs transforms, returns `{ entries, errors, warnings }` |
 | State | `loader.ts` (`ContentLoader`) | Owns config, caches and the in-flight build. Knows nothing about how errors are shown |
 | Adapter | `vite.ts` | Maps Vite hooks to loader calls and reports results. No content logic |
@@ -41,7 +41,8 @@ Pure modules, one class that owns state, and a thin adapter, each in its own fil
 - **Messages name the fix.** Say what went wrong, then what to do: ``transform changed slug "a" to "b". Set `slug` in the frontmatter instead``.
 - **Warnings state the consequence**: `directory "x" does not exist, so content.posts is empty`.
 - Only the adapter adds the `[tomekit]` prefix and talks to the logger. Lower layers return plain strings.
-- A thrown `Error` wraps the original in `cause`.
+- **Every thrown error is a class in `errors.ts`.** No `throw new Error(...)` in `src/`. Classes extend a category (`ConfigError`, `ContentError`, `TransformError`, `PluginError`), which extends `TomekitError`. Each sets `name` explicitly, and its constructor takes data and builds the message, so the wording lives in one file. Add a class per distinct failure, not per call site.
+- An error that wraps another passes it as `cause`.
 
 ## TSDoc
 

@@ -4,8 +4,14 @@ import path from "node:path";
 import { runnerImport } from "vite";
 
 import { inCollection, loadCollection } from "./collection";
-import type { ContentError, FileCache } from "./collection";
+import type { FileCache } from "./collection";
 import { configIssues } from "./config";
+import {
+  ConfigLoadError,
+  InvalidConfigError,
+  MissingDefaultExportError,
+} from "./errors";
+import type { ContentError } from "./errors";
 import { writeTypes } from "./generate";
 import type { Config } from "./index";
 
@@ -130,17 +136,14 @@ class ContentLoader {
         root,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${name} failed to load: ${message}`, { cause: error });
+      throw new ConfigLoadError(name, error);
     }
     this.#dependencies = result.dependencies.map((file) =>
       path.resolve(root, file)
     );
     const config = result.module.default;
     if (!isConfig(config)) {
-      throw new Error(
-        `${name} must export a config as its default export: export default defineConfig({ collections: { ... } })`
-      );
+      throw new MissingDefaultExportError(name);
     }
     return config;
   }
@@ -161,9 +164,7 @@ class ContentLoader {
     this.#current = config;
     const issues = configIssues(config);
     if (issues.length > 0) {
-      throw new Error(
-        [`${path.relative(root, configPath)} is invalid:`, ...issues].join("\n")
-      );
+      throw new InvalidConfigError(path.relative(root, configPath), issues);
     }
 
     const loaded = await Promise.all(

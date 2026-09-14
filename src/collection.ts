@@ -2,32 +2,14 @@ import { createHash } from "node:crypto";
 import { glob, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { ContentError, SlugChangedError } from "./errors";
 import { Skipped } from "./index";
 import type { CollectionConfig } from "./index";
 import { parse } from "./parse";
-import type { Issue, ParseResult } from "./parse";
+import type { ParseResult } from "./parse";
 import { serialize } from "./serialize";
 
 const DEFAULT_INCLUDE = "**/*.md";
-
-/** A problem with one content file, printed as `file:line:column: message`. */
-class ContentError extends Error {
-  readonly column: number | undefined;
-  /** Relative to the project root. */
-  readonly file: string;
-  readonly line: number | undefined;
-
-  constructor(file: string, issue: Issue, options?: ErrorOptions) {
-    const location = [file, issue.line, issue.column]
-      .filter((part) => part !== undefined)
-      .join(":");
-    super(`${location}: ${issue.message}`, options);
-    this.name = "ContentError";
-    this.column = issue.column;
-    this.file = file;
-    this.line = issue.line;
-  }
-}
 
 interface Entry {
   /** `output` as JavaScript source. */
@@ -221,9 +203,7 @@ async function loadFile(
       "slug" in output &&
       output.slug !== document.slug
     ) {
-      throw new Error(
-        `transform changed slug "${document.slug}" to ${JSON.stringify(output.slug)}. Set \`slug\` in the frontmatter instead, so lookups and types agree.`
-      );
+      throw new SlugChangedError(document.slug, output.slug);
     }
     if (!(output instanceof Skipped)) {
       code = serialize(output);
@@ -242,10 +222,4 @@ async function loadFile(
   };
 }
 
-export {
-  ContentError,
-  type Entry,
-  type FileCache,
-  inCollection,
-  loadCollection,
-};
+export { type Entry, type FileCache, inCollection, loadCollection };

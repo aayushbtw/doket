@@ -2,7 +2,12 @@ import path from "node:path";
 
 import type { ErrorPayload, Logger, Plugin, ViteDevServer } from "vite";
 
-import type { ContentError } from "./collection";
+import {
+  BrokenContentError,
+  PluginNotReadyError,
+  UnknownCollectionError,
+} from "./errors";
+import type { ContentError } from "./errors";
 import { ContentLoader, MODULE_ID } from "./loader";
 import type { Build } from "./loader";
 
@@ -24,12 +29,6 @@ interface TomekitOptions {
    * @default ".tomekit"
    */
   types?: string | false;
-}
-
-function summary(errors: readonly ContentError[]): string {
-  const files = new Set(errors.map((error) => error.file)).size;
-  const heading = `${files} content ${files === 1 ? "file has" : "files have"} errors:`;
-  return [heading, ...errors.map((error) => error.message)].join("\n");
 }
 
 /**
@@ -73,7 +72,7 @@ function tomekit({
           file: path.resolve(root, first.file),
           line: first.line ?? 1,
         },
-        message: summary(errors),
+        message: new BrokenContentError(errors).message,
         plugin: "tomekit",
         stack: "",
       },
@@ -98,9 +97,7 @@ function tomekit({
 
   async function load(): Promise<Build> {
     if (loader === undefined) {
-      throw new Error(
-        "[tomekit] the plugin was used before Vite resolved its config"
-      );
+      throw new PluginNotReadyError();
     }
     const build = await loader.load();
     latestErrors = build.errors;
@@ -110,7 +107,7 @@ function tomekit({
     }
     // A build stops on broken content; dev leaves those files out so the rest keeps working.
     if (server === undefined && build.errors.length > 0) {
-      throw new Error(summary(build.errors));
+      throw new BrokenContentError(build.errors);
     }
     return build;
   }
@@ -210,12 +207,9 @@ function tomekit({
         const name = id.slice(RESOLVED_ID.length + 1);
         const code = build.collections.get(name);
         if (code === undefined) {
-          const known = [...build.collections.keys()]
-            .map((key) => JSON.stringify(key))
-            .join(", ");
-          throw new Error(
-            `[tomekit] ${moduleId} does not exist. Collections in the config: ${known || "none"}.`
-          );
+          throw new UnknownCollectionError(moduleId, [
+            ...build.collections.keys(),
+          ]);
         }
         return code;
       } finally {

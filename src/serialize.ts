@@ -1,3 +1,5 @@
+import { UnserializableValueError } from "./errors";
+
 const IDENTIFIER = /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u;
 
 interface WriteState {
@@ -26,10 +28,7 @@ function kind(value: object): string {
 }
 
 function fail(what: string, at: string): never {
-  const where = at === "" ? "" : ` at ${at}`;
-  throw new TypeError(
-    `cannot write ${what}${where} into content. Return plain data, strings, numbers, Dates, Maps, Sets, URLs or RegExps from transform.`
-  );
+  throw new UnserializableValueError(what, at);
 }
 
 function number(value: number, state: WriteState): string {

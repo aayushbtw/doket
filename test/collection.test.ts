@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { loadCollection } from "../src/collection";
 import type { FileCache } from "../src/collection";
+import { UnserializableValueError } from "../src/errors";
 import { defineCollection } from "../src/index";
 import { createProject } from "./project";
 
@@ -311,6 +312,7 @@ describe("loadCollection", () => {
 
     const { errors } = await loadCollection("posts", withClass, root);
 
+    expect(errors[0]?.cause).toBeInstanceOf(UnserializableValueError);
     expect(messages(errors)[0]).toMatch(
       /^content\/posts\/a\.md: cannot write an instance of Author at meta\.list\[0\] into content/u
     );
