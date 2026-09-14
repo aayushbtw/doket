@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { build, createLogger, createServer } from "vite";
-import type { HotPayload, ViteDevServer } from "vite";
+import type { HotPayload, ServerOptions, ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { tomekit } from "../src/vite";
@@ -67,6 +67,26 @@ async function loadPosts(dev: ViteDevServer) {
   return module.content.posts;
 }
 
+/** A browser's HMR connection to a listening dev server. */
+function connect(dev: ViteDevServer) {
+  const [local] = dev.resolvedUrls?.local ?? [];
+
+  if (local === undefined) {
+    throw new Error("dev server is not listening");
+  }
+
+  const url = new URL(local);
+  url.protocol = "ws:";
+
+  const socket = new WebSocket(url, "vite-hmr");
+  const received: string[] = [];
+  socket.addEventListener("message", (event) => {
+    received.push(String(event.data));
+  });
+
+  return { received, socket };
+}
+
 let server: ViteDevServer | undefined;
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -77,7 +97,10 @@ afterEach(async () => {
   await cleanup?.();
 });
 
-async function start(files: Record<string, string>) {
+async function start(
+  files: Record<string, string>,
+  options: ServerOptions = { hmr: false, middlewareMode: true }
+) {
   const project = await createProject({
     "src/read.ts": 'export { content } from "tomekit/content";\n',
     "tomekit.config.ts": config,
@@ -103,7 +126,7 @@ async function start(files: Record<string, string>) {
     // The generated module imports the query runtime the way an installed package would.
     resolve: { alias: { "tomekit/query": QUERY } },
     root: project.root,
-    server: { hmr: false, middlewareMode: true },
+    server: options,
   });
 
   function change(file: string) {
@@ -229,6 +252,32 @@ describe("tomekit()", () => {
     expect(overlay?.err.message).toContain(
       "content/posts/broken.md:2:1: date:"
     );
+  });
+
+  it("shows the overlay again to a browser that connects later", async () => {
+    const { server: dev } = await start(
+      {
+        "content/posts/broken.md": "---\ntitle: 1\n---\n",
+        "content/posts/hello.md": HELLO,
+      },
+      { port: 0 }
+    );
+
+    await dev.listen();
+
+    // Vite replays a buffered error to the first browser only, so the second one tests the resend.
+    const first = connect(dev);
+    await expect
+      .poll(() => first.received.join("\n"))
+      .toContain('"type":"connected"');
+
+    const second = connect(dev);
+    await expect
+      .poll(() => second.received.join("\n"))
+      .toContain("content/posts/broken.md:2:1: date:");
+
+    first.socket.close();
+    second.socket.close();
   });
 
   it("fails on collection names it cannot generate types for", async () => {
