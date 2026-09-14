@@ -88,7 +88,7 @@ async function typecheck(usage: string) {
 describe("generated types", () => {
   it("type content, named types and slugs through the tsconfig alias", async () => {
     const output = await typecheck(`
-import { content, type AnyDocument, type Posts, type PostsSlug } from "tomekit/content";
+import { content, type AnyDocument, type CollectionName, type Posts, type PostsSlug } from "tomekit/content";
 import index from "tomekit/content/index";
 import posts from "tomekit/content/posts";
 
@@ -99,9 +99,15 @@ const fromRoute: string = "anything";
 posts.get(fromRoute);
 const slugs: readonly PostsSlug[] = posts.slugs;
 const order: number | undefined = index.get("home")?.order ?? content.index.all[0]?.order;
-const everything: AnyDocument[] = Object.values(content).flatMap((collection): readonly AnyDocument[] => collection.all);
+const everything: AnyDocument[] = Object.values(content).map((collection) => collection.all).flat();
 
-export { everything, order, slug, slugs, title };
+function isCollection(name: string): name is CollectionName {
+  return Object.hasOwn(content, name);
+}
+
+const byName: readonly AnyDocument[] = isCollection(fromRoute) ? content[fromRoute].all : [];
+
+export { byName, everything, order, slug, slugs, title };
 `);
 
     expect(output).toBe("");
@@ -109,15 +115,17 @@ export { everything, order, slug, slugs, title };
 
   it("reject fields and slugs that do not exist", async () => {
     const output = await typecheck(`
-import { content, type PostsSlug } from "tomekit/content";
+import { content, type CollectionName, type PostsSlug } from "tomekit/content";
 
 content.posts.all[0]?.author;
 const slug: PostsSlug = "missing";
+const name: CollectionName = "drafts";
 
-export { slug };
+export { name, slug };
 `);
 
     expect(output).toContain("author");
     expect(output).toContain('"missing"');
+    expect(output).toContain('"drafts"');
   }, 30_000);
 });

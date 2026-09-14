@@ -75,11 +75,19 @@ function indexFile(collections: readonly GeneratedCollection[]): string {
 
   const union = types.length === 0 ? "never" : types.join(" | ");
 
+  const names =
+    collections.length === 0
+      ? "never"
+      : collections.map(({ name }) => JSON.stringify(name)).join(" | ");
+
   return `${HEADER}
 ${reexports}
 
 /** A document from any collection. */
 export type AnyDocument = ${union};
+
+/** The name of any collection, eg to check a route param before \`content[name]\`. */
+export type CollectionName = ${names};
 
 /** Every collection in your config, keyed by name. */
 export declare const content: {

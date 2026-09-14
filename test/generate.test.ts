@@ -61,6 +61,7 @@ describe("writeTypes", () => {
       '"posts": typeof import("./content/posts").default;'
     );
     expect(index).toContain("export type AnyDocument = Posts | Notes;");
+    expect(index).toContain('export type CollectionName = "posts" | "notes";');
   });
 
   it("reports no change when nothing differs, and removes dropped collections", async () => {

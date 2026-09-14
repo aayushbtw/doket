@@ -85,7 +85,7 @@ Whenever content loads, the plugin writes types for every collection into `.tome
 
 ## Types
 
-Each collection gets a document type and a slug type, named after its key in PascalCase. `AnyDocument` is a document from any collection.
+Each collection gets a document type and a slug type, named after its key in PascalCase. `AnyDocument` is a document from any collection, and `CollectionName` is any collection's key.
 
 ```ts
 import { content, type Posts, type PostsSlug } from "tomekit/content";
@@ -135,9 +135,11 @@ Object.values(content)
 To pick a collection by a name held in a variable, index `content`. A name typed as a collection name stays typed; a plain string, eg a route param, needs a check first:
 
 ```ts
-content[name].all; // name: keyof typeof content
+import { content, type CollectionName } from "tomekit/content";
 
-function isCollection(name: string): name is keyof typeof content {
+content[name].all; // name: CollectionName
+
+function isCollection(name: string): name is CollectionName {
   return Object.hasOwn(content, name);
 }
 
