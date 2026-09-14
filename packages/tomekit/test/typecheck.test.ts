@@ -79,7 +79,10 @@ async function typecheck(usage: string) {
   await server.pluginContainer.buildStart({});
   await server.close();
 
-  const result = spawnSync(TSC, ["-p", project.root], { encoding: "utf-8" });
+  // Assertions match `file(line,col)`; FORCE_COLOR switches tsc to pretty output, and only the CLI flag overrides it.
+  const result = spawnSync(TSC, ["-p", project.root, "--pretty", "false"], {
+    encoding: "utf-8",
+  });
 
   return result.status === 0 ? "" : result.stdout;
 }
