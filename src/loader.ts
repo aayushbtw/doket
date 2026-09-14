@@ -33,6 +33,8 @@ interface LoaderOptions {
   /** Absolute path of the config file. */
   configPath: string;
   root: string;
+  /** Absolute path of the runtime the generated module imports. */
+  runtime: string;
   /** Absolute path of the types folder, or `false` to skip them. */
   types: string | false;
 }
@@ -159,7 +161,7 @@ class ContentLoader {
   }
 
   async #run(): Promise<Build> {
-    const { configPath, root, types } = this.#options;
+    const { configPath, root, runtime, types } = this.#options;
     this.#config ??= this.#importConfig();
     const imported = this.#config;
     let config: Config;
@@ -223,7 +225,7 @@ class ContentLoader {
     });
 
     return {
-      code: `import { createCollection, createCollections } from "tomekit/query";
+      code: `import { createCollection, createCollections } from ${JSON.stringify(runtime)};
 export const collections = createCollections({${byName.join(",")}});
 `,
       errors: loaded.flatMap((collection) => collection.errors),

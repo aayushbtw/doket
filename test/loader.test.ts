@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { ConfigLoadError } from "../src/errors";
 import { ContentLoader } from "../src/loader";
-import { createProject, SOURCE } from "./project";
+import { createProject, QUERY, SOURCE } from "./project";
 
 const config = `
 import { z } from "zod";
@@ -46,6 +46,7 @@ async function createLoader(
   const loader = new ContentLoader({
     configPath: path.join(project.root, "tomekit.config.ts"),
     root: project.root,
+    runtime: QUERY,
     types: types === false ? false : path.join(project.root, types),
   });
 

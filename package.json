@@ -33,10 +33,6 @@
       "types": "./dist/content.d.mts",
       "default": "./dist/content.mjs"
     },
-    "./query": {
-      "types": "./dist/query.d.mts",
-      "default": "./dist/query.mjs"
-    },
     "./vite": {
       "types": "./dist/vite.d.mts",
       "default": "./dist/vite.mjs"

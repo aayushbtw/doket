@@ -6,7 +6,7 @@ import type { HotPayload, ServerOptions, ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { tomekit } from "../src/vite";
-import { createProject, QUERY, SOURCE } from "./project";
+import { createProject, SOURCE } from "./project";
 
 // Counts transform runs on `globalThis`, which the config shares with the test
 // even though Vite imports it separately.
@@ -134,8 +134,6 @@ async function start(
     configFile: false,
     customLogger: logger,
     plugins: [tomekit()],
-    // The generated module imports the query runtime the way an installed package would.
-    resolve: { alias: { "tomekit/query": QUERY } },
     root: project.root,
     server: options,
   });
@@ -318,7 +316,7 @@ describe("tomekit()", () => {
 
     for (const environment of Object.values(dev.environments)) {
       expect(environment.config.optimizeDeps.exclude).toEqual(
-        expect.arrayContaining(["tomekit", "tomekit/content", "tomekit/query"])
+        expect.arrayContaining(["tomekit", "tomekit/content"])
       );
     }
   });
@@ -394,7 +392,6 @@ describe("vite build", () => {
       configFile: false,
       logLevel: "silent",
       plugins: [tomekit()],
-      resolve: { alias: { "tomekit/query": QUERY } },
       root: project.root,
     });
 
@@ -421,7 +418,6 @@ describe("vite build", () => {
       configFile: false,
       logLevel: "silent",
       plugins: [tomekit()],
-      resolve: { alias: { "tomekit/query": QUERY } },
       root: project.root,
     });
 

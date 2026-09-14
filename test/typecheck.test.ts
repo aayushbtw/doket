@@ -5,7 +5,7 @@ import { createServer } from "vite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { tomekit } from "../src/vite";
-import { createProject, QUERY, SOURCE } from "./project";
+import { createProject, SOURCE } from "./project";
 
 const TSC = path.join(import.meta.dirname, "..", "node_modules", ".bin", "tsc");
 
@@ -72,7 +72,6 @@ async function typecheck(usage: string) {
     configFile: false,
     logLevel: "silent",
     plugins: [tomekit()],
-    resolve: { alias: { "tomekit/query": QUERY } },
     root: project.root,
     server: { hmr: false, middlewareMode: true },
   });

@@ -9,6 +9,12 @@ import type { Build } from "./loader";
 
 const RESOLVED_ID = `\0${MODULE_ID}`;
 
+// Imported by path, so the runtime needs no public export. `.ts` when running from source.
+const RUNTIME = path
+  .join(import.meta.dirname, `query${path.extname(import.meta.filename)}`)
+  .split(path.sep)
+  .join("/");
+
 /** Options for the {@link tomekit} Vite plugin. */
 interface TomekitOptions {
   /**
@@ -169,7 +175,7 @@ function tomekit({
     // own module must never be bundled from its stub.
     configEnvironment() {
       return {
-        optimizeDeps: { exclude: ["tomekit", MODULE_ID, "tomekit/query"] },
+        optimizeDeps: { exclude: ["tomekit", MODULE_ID] },
       };
     },
 
@@ -178,6 +184,7 @@ function tomekit({
       loader = new ContentLoader({
         configPath: path.resolve(root, config),
         root,
+        runtime: RUNTIME,
         types: types === false ? false : path.resolve(root, types),
       });
     },
