@@ -67,6 +67,9 @@ Public exports get TSDoc: a one-sentence summary, then an `@example` that runs a
 
 The linter (ultracite on oxlint) enforces most of these, so match them up front instead of relying on `pnpm fix`:
 
+- Use `interface` for object shapes, including reshaped ones (`interface A extends Omit<B, "k"> {}`). Use `type` only for unions, function types and mapped or conditional types.
+- Types inferred from user schemas are wrapped once in `Prettify` (`{ [K in keyof T]: T[K] } & {}`), so errors print the flat fields instead of nested helper names. Use `PrettifyIfPlainObject` where a value might be an array or a built-in (Date, Map, Set, RegExp), which must keep their own type. Don't generate named interfaces to work around this.
+- Helper types that exist only for generated code or the type system get `@internal` in their TSDoc.
 - Use function declarations, not arrow consts (`func-style`). Arrows are fine as inline callbacks.
 - Use `async`/`await` with `try`/`catch`, not `.then`/`.catch` chains.
 - Object keys sorted, no chained assignment, no `any` or unsafe assertions (in tests too).
