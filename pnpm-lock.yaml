@@ -220,6 +220,9 @@ importers:
       react-dom:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
+      tomekit:
+        specifier: workspace:*
+        version: link:../../packages/tomekit
     devDependencies:
       '@tanstack/router-cli':
         specifier: ^1.167.36
@@ -245,6 +248,9 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.1(@types/node@26.5.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1)
+      zod:
+        specifier: ^4.6.2
+        version: 4.6.2
 
   packages/tomekit:
     dependencies:

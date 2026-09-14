@@ -1,14 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
   return (
     <main>
-      <h1>Welcome to TanStack Start</h1>
-      <p>
-        Edit <code>src/routes/index.tsx</code> to get started.
-      </p>
+      <h1>tomekit</h1>
+      <p>Fully typed content collections for Markdown.</p>
+      <Link params={{ slug: "introduction" }} to="/docs/$slug">
+        Read the docs
+      </Link>
     </main>
   );
 }
