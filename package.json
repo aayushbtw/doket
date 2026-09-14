@@ -1,6 +1,6 @@
 {
   "name": "tomekit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Typed content collections for Vite. Parsed at build, nothing at runtime.",
   "keywords": [
     "collections",
