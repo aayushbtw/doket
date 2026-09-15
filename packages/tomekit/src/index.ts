@@ -348,6 +348,28 @@ function defineCollection<
   return collection;
 }
 
+/**
+ * Defines a loader outside a collection, eg one several collections share,
+ * with its file type inferred from the entries it returns.
+ *
+ * @example
+ * ```ts
+ * export const pages = defineLoader({
+ *   load: () => ({ entries: [{ body: "# Hello", slug: "hello" }] }),
+ * });
+ *
+ * export default defineConfig({
+ *   collections: { pages: { loader: pages, schema: z.object({}) } },
+ * });
+ * ```
+ */
+// Defaults to `undefined`, so a loader whose entries set no `file` gives documents without one.
+function defineLoader<TFile extends FileInfo | undefined = undefined>(
+  loader: Loader<TFile>
+): Loader<TFile> {
+  return loader;
+}
+
 // A file type inferred from a loader, or `FileInfo | undefined` when nothing could be inferred, eg from an inline `load`.
 type FileOf<TFile> = unknown extends TFile
   ? FileInfo | undefined
@@ -424,6 +446,7 @@ export {
   type Config,
   defineCollection,
   defineConfig,
+  defineLoader,
   type Entry,
   type FileInfo,
   type InferDocument,

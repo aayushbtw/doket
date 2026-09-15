@@ -1,7 +1,12 @@
 // Checked by `vp check`, never run: each line fails to compile if inference breaks.
 import { z } from "zod";
 
-import { defineCollection, defineConfig, directory } from "../src/index";
+import {
+  defineCollection,
+  defineConfig,
+  defineLoader,
+  directory,
+} from "../src/index";
 import { ContentError } from "../src/index";
 import type {
   Collection,
@@ -330,3 +335,23 @@ const subject: ContentSubject = { collection: "pages", slug: "a" };
 const issue: Issue = { line: 1, message: "title: expected a string" };
 
 export const contentMessage: string = new ContentError(subject, issue).message;
+
+// `defineLoader` keeps a shared loader's file type: required when its entries set files.
+const withFiles = defineLoader({
+  load: () => ({
+    entries: [{ file: { name: "a.md", path: "content/a.md" }, slug: "a" }],
+  }),
+});
+
+export const sharedPath: string | undefined = read(
+  defineCollection({ loader: withFiles, schema: z.object({}) })
+).documents()[0]?.file.path;
+
+// …and `undefined` when they set none.
+const withoutFiles = defineLoader({
+  load: () => ({ entries: [{ slug: "a" }] }),
+});
+
+export const sharedFile: undefined = read(
+  defineCollection({ loader: withoutFiles, schema: z.object({}) })
+).documents()[0]?.file;
