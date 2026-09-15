@@ -1,22 +1,13 @@
-import { Markdown } from "@tanstack/markdown/react";
-import { createFileRoute, notFound } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
-import { collections } from "tomekit/content";
+import * as stylex from "@stylexjs/stylex";
+import { createFileRoute } from "@tanstack/react-router";
 
-import { highlightCode } from "#/lib/highlight";
+import { PageNav } from "#/components/page-nav";
+import { Prose } from "#/components/prose";
+import { Toc } from "#/components/toc";
+import { getDoc } from "#/lib/docs";
 
-// Content is read inside a server function so it never ships in the client bundle.
-const getDoc = createServerFn({ method: "GET" })
-  .validator((slug: string) => slug)
-  .handler(({ data: slug }) => {
-    const doc = collections.get("docs").get(slug);
-
-    if (!doc) {
-      throw notFound();
-    }
-
-    return doc;
-  });
+import { colors, layout, text } from "../tokens.stylex";
+import { typography } from "../typography";
 
 // Not sorted: `loader` must come before `head` and `component`, which infer `loaderData` from it.
 export const Route = createFileRoute("/docs/$slug")({
@@ -27,16 +18,55 @@ export const Route = createFileRoute("/docs/$slug")({
   component: Doc,
 });
 
+const narrow = "@media (width <= 768px)";
+
+const styles = stylex.create({
+  article: {
+    flex: 1,
+    minWidth: 0,
+    paddingBlockEnd: "80px",
+    paddingBlockStart: layout.contentTop,
+  },
+  description: {
+    color: colors.gray11,
+    marginBlockEnd: "16px",
+  },
+  title: {
+    color: colors.gray12,
+    fontSize: {
+      [narrow]: "22px",
+      default: text.xlSize,
+    },
+    fontVariationSettings: {
+      [narrow]: '"wght" 700',
+      default: '"wght" 600',
+    },
+    letterSpacing: {
+      [narrow]: "-0.403px",
+      default: text.xlTracking,
+    },
+    lineHeight: {
+      [narrow]: 1.2,
+      default: text.xlLeading,
+    },
+    marginBlockEnd: "8px",
+  },
+});
+
 function Doc() {
-  const { body, metadata } = Route.useLoaderData();
+  const { body, metadata, next, previous } = Route.useLoaderData();
 
   return (
-    <main className="mx-auto my-16 max-w-2xl px-4">
-      <h1 className="text-3xl font-semibold">{metadata.title}</h1>
-      <p className="mt-2 text-neutral-500">{metadata.description}</p>
-      <article className="mt-8">
-        <Markdown highlighter={highlightCode}>{body}</Markdown>
+    <>
+      <article {...stylex.props(styles.article)}>
+        <h1 {...stylex.props(styles.title)}>{metadata.title}</h1>
+        <p {...stylex.props(typography.base, styles.description)}>
+          {metadata.description}
+        </p>
+        <Prose body={body} />
+        <PageNav next={next} previous={previous} />
       </article>
-    </main>
+      <Toc headings={metadata.headings} />
+    </>
   );
 }
