@@ -483,6 +483,44 @@ describe("vite build", () => {
     );
   });
 
+  it("fails on a reference to a slug no document has", async () => {
+    const project = await createProject({
+      "content/authors/ada.md": "Ada\n",
+      "content/posts/a.md": "---\nauthor: adaa\n---\n",
+      "src/main.ts": "export const answer = 42;\n",
+      "tomekit.config.ts": `
+import { z } from "zod";
+import { defineConfig, directory } from ${JSON.stringify(SOURCE)};
+
+export default defineConfig({
+  collections: {
+    authors: { loader: directory("content/authors"), schema: z.object({}) },
+    posts: { loader: directory("content/posts"), schema: z.object({ author: z.string() }) },
+  },
+  references: { posts: { author: "authors" } },
+});
+`,
+    });
+
+    ({ cleanup } = project);
+
+    const result = build({
+      build: {
+        rolldownOptions: { input: "src/main.ts" },
+        ssr: true,
+        write: false,
+      },
+      configFile: false,
+      logLevel: "silent",
+      plugins: [tomekit()],
+      root: project.root,
+    });
+
+    await expect(result).rejects.toThrow(
+      '1 content file has errors:\ncontent/posts/a.md:2:1: author: no document in collection "authors" has the slug "adaa".'
+    );
+  });
+
   it("fails on broken content even when nothing imports it", async () => {
     const project = await createProject({
       "content/posts/a.md": "---\ntitle: A\n---\n",

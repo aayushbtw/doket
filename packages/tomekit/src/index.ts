@@ -263,9 +263,24 @@ interface Config<
     string,
     CollectionConfig
   >,
+  TReferences = Readonly<Record<string, Readonly<Record<string, string>>>>,
 > {
   /** Keyed by collection name, eg `posts` for `collections.get("posts")`. */
   collections: TCollections;
+  /**
+   * Metadata fields that hold slugs of another collection, keyed by collection
+   * name and then by key path. A slug that no document has fails the build,
+   * and the field is typed as that collection's slugs.
+   *
+   * @example
+   * ```ts
+   * references: {
+   *   posts: { author: "authors", "sections.author": "authors" },
+   * }
+   * // collections.get("authors").get(post.metadata.author).metadata.name
+   * ```
+   */
+  references?: TReferences;
 }
 
 // Values a transform can return that must keep their own type, not be flattened.
@@ -322,6 +337,100 @@ type InferDocument<TCollection> =
         TFile
       >
     : never;
+
+type ItemOf<TValue> = TValue extends readonly (infer TItem)[]
+  ? ItemOf<TItem>
+  : TValue;
+
+// Deep enough for real metadata; the limit keeps recursive types, eg ASTs, from expanding forever.
+type ReferenceDepth = 5;
+
+/** A dot-separated key path, eg `sections.author`, to strings or arrays of strings in metadata. */
+// A key that contains a dot is left out, since its path would read as two keys.
+type ReferencePath<
+  TMetadata,
+  TDepth extends readonly 0[] = [],
+> = TDepth["length"] extends ReferenceDepth
+  ? never
+  : TMetadata extends object
+    ? {
+        [TKey in keyof TMetadata & string]-?: TKey extends `${string}.${string}`
+          ? never
+          :
+              | ([
+                  Extract<ItemOf<NonNullable<TMetadata[TKey]>>, string>,
+                ] extends [never]
+                  ? never
+                  : TKey)
+              | `${TKey}.${ReferencePath<
+                  Exclude<
+                    Extract<ItemOf<NonNullable<TMetadata[TKey]>>, object>,
+                    BuiltIn | URL
+                  >,
+                  [...TDepth, 0]
+                >}`;
+      }[keyof TMetadata & string]
+    : never;
+
+// Replaces the strings in a value, and in its arrays, with `TSlug`.
+type Slugged<TValue, TSlug> = TValue extends string
+  ? TSlug
+  : TValue extends (infer TItem)[]
+    ? Slugged<TItem, TSlug>[]
+    : TValue extends readonly (infer TItem)[]
+      ? readonly Slugged<TItem, TSlug>[]
+      : TValue;
+
+type NestedReferences<TReferences, TKey> = {
+  [
+    TPath in keyof TReferences as TPath extends `${TKey & string}.${infer TRest}`
+      ? TRest
+      : never
+  ]: TReferences[TPath];
+};
+
+type Referenced<TValue, TReferences, TSlugs> = [keyof TReferences] extends [
+  never,
+]
+  ? TValue
+  : TValue extends (infer TItem)[]
+    ? Referenced<TItem, TReferences, TSlugs>[]
+    : TValue extends readonly (infer TItem)[]
+      ? readonly Referenced<TItem, TReferences, TSlugs>[]
+      : TValue extends BuiltIn | URL
+        ? TValue
+        : TValue extends object
+          ? {
+              [TKey in keyof TValue]: Referenced<
+                TKey extends keyof TReferences
+                  ? Slugged<
+                      TValue[TKey],
+                      TSlugs[TReferences[TKey] & keyof TSlugs]
+                    >
+                  : TValue[TKey],
+                NestedReferences<TReferences, TKey>,
+                TSlugs
+              >;
+            }
+          : TValue;
+
+/**
+ * Types a document's referenced metadata fields as the slugs of the
+ * collections they point at, for the generated types in `.tomekit`.
+ *
+ * @internal
+ */
+type WithReferences<TDocument, TReferences, TSlugs> = [
+  keyof TReferences,
+] extends [never]
+  ? TDocument
+  : TDocument extends { metadata: infer TMetadata }
+    ? Prettify<
+        Omit<TDocument, "metadata"> & {
+          metadata: Referenced<TMetadata, TReferences, TSlugs>;
+        }
+      >
+    : TDocument;
 
 /**
  * Narrows a document's `slug` to the slugs that exist, for the generated
@@ -423,6 +532,14 @@ function defineConfig<
   // Unconstrained: a constraint here makes inference fall back to it and lose each transform's output type.
   TOutputs extends { [TName in keyof TSchemas]: unknown },
   TFiles extends { [TName in keyof TSchemas]: unknown },
+  // Top level, not on each collection: checking paths and names there loses each transform's output type.
+  const TReferences extends {
+    readonly [TName in keyof TSchemas]?: {
+      readonly [
+        TPath in ReferencePath<InferOutput<TSchemas[TName]>>
+      ]?: keyof TSchemas & string;
+    };
+  } = Record<never, never>,
 >(config: {
   collections: {
     [TName in keyof TSchemas]: {
@@ -446,7 +563,9 @@ function defineConfig<
       ) => TOutputs[TName];
     };
   };
-}): Config<InferredCollections<TSchemas, TOutputs, TFiles>>;
+  /** Metadata fields that hold slugs of another collection, eg `{ posts: { author: "authors" } }`. A slug that no document has fails the build. */
+  references?: TReferences;
+}): Config<InferredCollections<TSchemas, TOutputs, TFiles>, TReferences>;
 // Loose on purpose: the parameter's `schema` intersection never matches the inferred return type.
 function defineConfig(config: Config): Config {
   return config;
@@ -470,6 +589,7 @@ export {
   type StandardSchema,
   type TransformContext,
   type TransformResult,
+  type WithReferences,
   type WithSlug,
 };
 

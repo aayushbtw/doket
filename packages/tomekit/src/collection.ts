@@ -5,8 +5,9 @@ import { ContentError } from "./errors";
 import type { Issue } from "./errors";
 import type { CollectionConfig, Entry, LoadResult } from "./index";
 import { isLocated, LOCATE } from "./parse";
+import type { Locate } from "./parse";
 import { serialize } from "./serialize";
-import { Skipped } from "./skipped";
+import { REASON, Skipped } from "./skipped";
 import { validate } from "./validate";
 import { assertContentValue, isPlainObject } from "./value";
 import type { ContentValue } from "./value";
@@ -17,6 +18,8 @@ interface BuiltDocument {
   code: string;
   /** Relative to the root, or `undefined` when the loader gave no file. */
   file: string | undefined;
+  /** Where a metadata key is written, when the loader can tell. */
+  locate: Locate | undefined;
   output: ContentValue | Skipped;
   /** Computed before the transform, so lookups work whatever it returns. */
   slug: string;
@@ -28,9 +31,13 @@ interface BuiltDocument {
 type EntryCache = Map<string, { document: BuiltDocument; hash: string }>;
 
 interface CollectionResult {
+  /** Slugs of entries with errors, so a reference to one can say why it does not resolve. */
+  broken: Set<string>;
   /** Every kept document, in the loader's order. Broken entries are left out. */
   documents: BuiltDocument[];
   errors: ContentError[];
+  /** Slugs a transform skipped, with the reason it gave. */
+  skipped: Map<string, string | undefined>;
   warnings: string[];
 }
 
@@ -72,6 +79,7 @@ async function loadCollection(
     loaded = await collection.loader.load({ collection: name, dev, root });
   } catch (error) {
     return {
+      broken: new Set(),
       documents: [],
       errors: [
         new ContentError(
@@ -80,12 +88,14 @@ async function loadCollection(
           { cause: error }
         ),
       ],
+      skipped: new Map(),
       warnings: [],
     };
   }
 
   if (!isLoadResult(loaded)) {
     return {
+      broken: new Set(),
       documents: [],
       errors: [
         new ContentError(
@@ -96,6 +106,7 @@ async function loadCollection(
           }
         ),
       ],
+      skipped: new Map(),
       warnings: [],
     };
   }
@@ -139,16 +150,25 @@ async function loadCollection(
 
   const bySlug = new Map<string, BuiltDocument>();
   const documents: BuiltDocument[] = [];
+  const broken = new Set<string>();
+  const skipped = new Map<string, string | undefined>();
 
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     if (result.errors) {
       errors.push(...result.errors);
+      const slug = loaded.entries[index]?.slug;
+
+      if (isSlug(slug)) {
+        broken.add(slug);
+      }
+
       continue;
     }
 
     const { document } = result;
 
     if (document.output instanceof Skipped) {
+      skipped.set(document.slug, document.output[REASON]);
       continue;
     }
 
@@ -163,7 +183,13 @@ async function loadCollection(
     documents.push(document);
   }
 
-  return { documents, errors, warnings: [...(loaded.warnings ?? [])] };
+  return {
+    broken,
+    documents,
+    errors,
+    skipped,
+    warnings: [...(loaded.warnings ?? [])],
+  };
 }
 
 function duplicateSlug(
@@ -256,7 +282,7 @@ async function loadEntry(
   const cached = broken ? undefined : cache?.get(entry.slug);
 
   if (cached?.hash === entryHash) {
-    return { document: { ...cached.document, slugPosition } };
+    return { document: { ...cached.document, locate, slugPosition } };
   }
 
   const validated = await validate(entry, metadata, collection.schema, locate);
@@ -292,7 +318,14 @@ async function loadEntry(
     return failure(error);
   }
 
-  const document = { code, file, output, slug: source.slug, slugPosition };
+  const document = {
+    code,
+    file,
+    locate,
+    output,
+    slug: source.slug,
+    slugPosition,
+  };
 
   cache?.set(entry.slug, { document, hash: entryHash });
 

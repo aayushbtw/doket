@@ -22,6 +22,10 @@ import { defineCollection, defineConfig, directory } from ${JSON.stringify(SOURC
 
 export default defineConfig({
   collections: {
+    authors: defineCollection({
+      loader: directory("content/authors"),
+      schema: z.object({ name: z.string() }),
+    }),
     collection: defineCollection({
       loader: directory("content/pages"),
       schema: z.object({ order: z.number() }),
@@ -34,7 +38,15 @@ export default defineConfig({
       loader: directory("content/posts"),
       schema: z.object({ title: z.string() }),
     }),
+    quotes: defineCollection({
+      loader: directory("content/quotes"),
+      schema: z.object({
+        author: z.string(),
+        sources: z.array(z.object({ note: z.string().optional(), post: z.string() })),
+      }),
+    }),
   },
+  references: { quotes: { author: "authors", "sources.post": "posts" } },
 });
 `;
 
@@ -60,8 +72,11 @@ const tsconfig = JSON.stringify({
 
 async function typecheck(usage: string) {
   const project = await createProject({
+    "content/authors/ada.md": "---\nname: Ada\n---\n",
     "content/pages/home.md": "---\norder: 1\n---\n",
     "content/posts/hello.md": "---\ntitle: Hello\n---\n",
+    "content/quotes/first.md":
+      "---\nauthor: ada\nsources:\n  - post: hello\n---\n",
     "tomekit.config.ts": config,
     "tsconfig.json": tsconfig,
     "usage.ts": usage,
@@ -134,6 +149,24 @@ export { name, slug, unchecked, type Archive };
     expect(output).toContain('"drafts"');
     expect(output).toContain('"archive"');
     expect(output).toContain("possibly 'undefined'");
+  }, 30_000);
+
+  it("type referenced fields as the slugs of the collection they point at", async () => {
+    const output = await typecheck(`
+import { collections, type SlugOf } from "tomekit/content";
+
+const quote = collections.get("quotes").get("first");
+const author: SlugOf<"authors"> = quote.metadata.author;
+const name: string = collections.get("authors").get(quote.metadata.author).metadata.name;
+const titles: string[] = quote.metadata.sources.map((source) => collections.get("posts").get(source.post).metadata.title);
+const note: string | undefined = quote.metadata.sources[0]?.note;
+const wrong: SlugOf<"posts"> = quote.metadata.author;
+
+export { author, name, note, titles, wrong };
+`);
+
+    expect(output).toMatch(/usage\.ts\(9,7\): error TS2322: .*"ada"/u);
+    expect(output.match(/error TS/gu)).toHaveLength(1);
   }, 30_000);
 
   it("return a document or undefined when the collection name is a union", async () => {

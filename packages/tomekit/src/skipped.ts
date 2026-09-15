@@ -14,4 +14,4 @@ class Skipped {
   }
 }
 
-export { Skipped };
+export { REASON, Skipped };

@@ -14,6 +14,7 @@ import {
 import type { ContentError } from "./errors";
 import { writeTypes } from "./generate";
 import type { Config } from "./index";
+import { checkReferences } from "./reference";
 import { isPlainObject } from "./value";
 
 const MODULE_ID = "tomekit/content";
@@ -238,11 +239,22 @@ class ContentBuilder {
       })
     );
 
+    // Every build, not cached: a change in one collection can break or fix references in another.
+    const references = checkReferences(loaded, config.references ?? {});
+
+    const collections = loaded.map((collection) => ({
+      ...collection,
+      documents: collection.documents.filter(
+        (document) =>
+          references.leftOut.get(collection.name)?.has(document.slug) !== true
+      ),
+    }));
+
     const warnings = loaded.flatMap((collection) => collection.warnings);
     let typesWritten: string | undefined;
 
     if (types !== false) {
-      const generated = loaded.map(({ documents, name }) => ({
+      const generated = collections.map(({ documents, name }) => ({
         name,
         slugs: documents.map((document) => document.slug),
       }));
@@ -261,7 +273,7 @@ class ContentBuilder {
       }
     }
 
-    const byName = loaded.map(({ documents, name }) => {
+    const byName = collections.map(({ documents, name }) => {
       const pairs = documents.map(
         ({ code, slug }) => `[${JSON.stringify(slug)},${code}]`
       );
@@ -273,7 +285,10 @@ class ContentBuilder {
       code: `import { createCollection, createCollections } from ${JSON.stringify(runtime)};
 export const collections = createCollections({${byName.join(",")}});
 `,
-      errors: loaded.flatMap((collection) => collection.errors),
+      errors: [
+        ...loaded.flatMap((collection) => collection.errors),
+        ...references.errors,
+      ],
       typesWritten,
       warnings,
     };

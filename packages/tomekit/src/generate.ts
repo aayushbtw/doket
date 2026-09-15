@@ -35,10 +35,12 @@ function typesFile(
     .join("\n");
 
   return `${HEADER}
-import type { Collection as _Collection, InferDocument as _InferDocument, WithSlug as _WithSlug } from "tomekit";
+import type { Collection as _Collection, InferDocument as _InferDocument, WithReferences as _WithReferences, WithSlug as _WithSlug } from "tomekit";
 import type config from ${JSON.stringify(configImport)};
 
 type _Configs = (typeof config)["collections"];
+
+type _References = NonNullable<(typeof config)["references"]>;
 
 interface _Slugs {
 ${slugs}
@@ -52,7 +54,7 @@ export type SlugOf<TName extends CollectionName = CollectionName> = _Slugs[TName
 
 /** A document in the named collection, or in any collection, eg \`DocumentOf<"posts">\`. */
 export type DocumentOf<TName extends CollectionName = CollectionName> = {
-  [TKey in TName]: _WithSlug<_InferDocument<_Configs[TKey & keyof _Configs]>, SlugOf<TKey>>;
+  [TKey in TName]: _WithSlug<_WithReferences<_InferDocument<_Configs[TKey & keyof _Configs]>, TKey extends keyof _References ? _References[TKey] : Record<never, never>, _Slugs>, SlugOf<TKey>>;
 }[TName];
 
 // No known slugs for a union of names: a slug may exist in only one of them.

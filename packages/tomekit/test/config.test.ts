@@ -43,4 +43,65 @@ describe("configIssues", () => {
       'collection "posts" has no loader. Set one, eg `loader: directory("content/posts")`.',
     ]);
   });
+
+  it("accepts references between collections in the config", () => {
+    expect(
+      configIssues({
+        collections: { authors: collection, posts: collection },
+        references: {
+          authors: { mentor: "authors" },
+          posts: { author: "authors", "sections.author": "authors" },
+        },
+      })
+    ).toStrictEqual([]);
+  });
+
+  it("names the collection or key path a reference gets wrong", () => {
+    expect(
+      configIssues({
+        collections: { authors: collection, posts: collection },
+        references: {
+          drafts: { author: "authors" },
+          posts: { "": "authors", "a..b": "authors", author: "autors" },
+        },
+      })
+    ).toStrictEqual([
+      'references.drafts: there is no collection "drafts". Use one of "authors", "posts".',
+      'references.posts[""] is not a key path. Separate keys with ".", eg "sections.author".',
+      'references.posts["a..b"] is not a key path. Separate keys with ".", eg "sections.author".',
+      'references.posts["author"] must name a collection, got "autors". Use one of "authors", "posts".',
+    ]);
+  });
+
+  it("rejects references that are not objects, for a JavaScript config", () => {
+    expect(
+      configIssues({
+        collections: { posts: collection },
+        // @ts-expect-error a JavaScript config can set anything
+        references: "posts",
+      })
+    ).toStrictEqual([
+      'references must be an object keyed by collection name, eg `references: { posts: { author: "authors" } }`.',
+    ]);
+
+    expect(
+      configIssues({
+        collections: { posts: collection },
+        // @ts-expect-error a JavaScript config can set anything
+        references: { posts: "posts" },
+      })
+    ).toStrictEqual([
+      'references.posts must be an object from key path to collection name, eg `{ author: "authors" }`.',
+    ]);
+
+    expect(
+      configIssues({
+        collections: { posts: collection },
+        // @ts-expect-error a JavaScript config can set anything
+        references: { posts: { author: 1 } },
+      })
+    ).toStrictEqual([
+      'references.posts["author"] must name a collection, got 1. Use one of "posts".',
+    ]);
+  });
 });

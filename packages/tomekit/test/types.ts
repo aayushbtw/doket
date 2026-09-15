@@ -16,6 +16,7 @@ import type {
   InferDocument,
   Source,
   TransformContext,
+  WithReferences,
 } from "../src/index";
 
 // What the generated `collections.get(name)` returns, without generated slug types.
@@ -335,6 +336,122 @@ const subject: ContentSubject = { collection: "pages", slug: "a" };
 const issue: Issue = { line: 1, message: "title: expected a string" };
 
 export const contentMessage: string = new ContentError(subject, issue).message;
+
+// References type the fields they name as the target's slugs, and keep each transform's output type.
+const referencing = defineConfig({
+  collections: {
+    authors: defineCollection({
+      loader: directory("content/authors"),
+      schema: z.object({ name: z.string() }),
+    }),
+    posts: {
+      loader: directory("content/posts"),
+      schema: z.object({
+        author: z.string(),
+        date: z.coerce.date(),
+        editor: z.string().optional(),
+        order: z.number(),
+        sections: z.array(z.object({ author: z.string(), title: z.string() })),
+        tags: z.array(z.string()),
+      }),
+      transform: ({ metadata, slug: key }) => ({
+        metadata: { ...metadata, url: `/posts/${key}` },
+      }),
+    },
+  },
+  references: {
+    posts: {
+      author: "authors",
+      editor: "authors",
+      "sections.author": "authors",
+      tags: "authors",
+    },
+  },
+});
+
+type ReferencedPost = WithReferences<
+  InferDocument<typeof referencing.collections.posts>,
+  NonNullable<typeof referencing.references>["posts"],
+  { authors: "ada" | "grace" }
+>;
+
+declare const referencedPost: ReferencedPost;
+
+export const referencedAuthor: "ada" | "grace" = referencedPost.metadata.author;
+
+export const referencedEditor: "ada" | "grace" | undefined =
+  referencedPost.metadata.editor;
+
+export const referencedSections: ("ada" | "grace")[] =
+  referencedPost.metadata.sections.map((section) => section.author);
+
+export const sectionTitle: string | undefined =
+  referencedPost.metadata.sections[0]?.title;
+
+export const referencedTags: ("ada" | "grace")[] = referencedPost.metadata.tags;
+
+export const referencedUrl: string = referencedPost.metadata.url;
+
+export const referencedDate: Date = referencedPost.metadata.date;
+
+// @ts-expect-error a field no reference names keeps its type
+export const unreferencedOrder: string = referencedPost.metadata.order;
+
+// Without references, documents keep their types.
+declare const unreferenced: WithReferences<
+  Post,
+  NonNullable<typeof config.references>,
+  { authors: "ada" }
+>;
+
+export const unreferencedTitle: string = unreferenced.metadata.title;
+
+const people = defineCollection({
+  loader: directory("content/people"),
+  schema: z.object({
+    date: z.coerce.date(),
+    mentor: z.string(),
+    order: z.number(),
+  }),
+});
+
+export const nonString = defineConfig({
+  collections: { people },
+  references: {
+    people: {
+      // @ts-expect-error a reference names a field of strings
+      order: "people",
+    },
+  },
+});
+
+export const intoDate = defineConfig({
+  collections: { people },
+  references: {
+    people: {
+      // @ts-expect-error a reference does not reach into a Date
+      "date.x": "people",
+    },
+  },
+});
+
+export const unknownTarget = defineConfig({
+  collections: { people },
+  references: {
+    people: {
+      // @ts-expect-error a reference points at a collection in the config
+      mentor: "persons",
+    },
+  },
+});
+
+export const unknownSource = defineConfig({
+  collections: { people },
+  references: {
+    // @ts-expect-error references are keyed by a collection in the config
+    persons: { mentor: "people" },
+  },
+});
 
 // `defineLoader` keeps a shared loader's file type: required when its entries set files.
 const withFiles = defineLoader({

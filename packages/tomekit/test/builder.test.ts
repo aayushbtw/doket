@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -29,6 +30,22 @@ export default defineConfig({
       schema: z.object({ title: z.string() }),
     }),
   },
+});
+`;
+
+const referencing = `
+import { z } from "zod";
+import { defineConfig, directory } from ${JSON.stringify(SOURCE)};
+
+export default defineConfig({
+  collections: {
+    authors: { loader: directory("content/authors"), schema: z.object({}) },
+    posts: {
+      loader: directory("content/posts"),
+      schema: z.object({ author: z.string() }),
+    },
+  },
+  references: { posts: { author: "authors" } },
 });
 `;
 
@@ -170,6 +187,38 @@ describe("ContentBuilder", () => {
         path.join(project.root, "content/posts"),
         path.join(project.root, "data"),
       ])
+    );
+  });
+
+  it("leaves out a document whose reference breaks, until the other collection has the slug", async () => {
+    const { builder, changed, project } = await createBuilder(
+      {
+        "content/authors/ada.md": "Ada\n",
+        "content/posts/hello.md": "---\nauthor: ada\n---\n",
+        "content/posts/typo.md": "---\nauthor: adaa\n---\n",
+        "tomekit.config.ts": referencing,
+      },
+      { types: ".tomekit" }
+    );
+
+    const broken = await builder.load();
+    const types = path.join(project.root, ".tomekit", "content.d.ts");
+
+    expect(broken.code).toContain('"hello"');
+    expect(broken.code).not.toContain('"typo"');
+    expect(broken.errors.map((error) => error.message)).toStrictEqual([
+      'content/posts/typo.md:2:1: author: no document in collection "authors" has the slug "adaa". Fix the slug, or add a document with it to "authors"',
+    ]);
+    expect(await readFile(types, "utf-8")).toContain('  "posts": "hello";');
+
+    await project.write({ "content/authors/adaa.md": "Adaa\n" });
+    changed("content/authors/adaa.md");
+    const fixed = await builder.load();
+
+    expect(fixed.errors).toStrictEqual([]);
+    expect(fixed.code).toContain('"typo"');
+    expect(await readFile(types, "utf-8")).toContain(
+      '  "posts": "hello" | "typo";'
     );
   });
 
