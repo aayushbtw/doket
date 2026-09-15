@@ -91,9 +91,10 @@ The linter enforces most of these, so match them up front instead of relying on 
 
 ## Internal docs
 
-The root `docs/` is gitignored and holds what doesn't belong in this file. Read both before designing or naming anything:
+The root `docs/` is gitignored and holds what doesn't belong in this file. Read all three before designing, naming or recommending anything:
 
+- `docs/principles.md`: how to decide and what to recommend
 - `docs/naming.md`: one word per concept, and the shape of the reading API
-- `docs/decisions.md`: settled decisions; don't reopen them unless the user asks
+- `docs/decisions.md`: settled decisions, reopened only when one blocks the best API
 
-Record a new decision or name there, not here.
+Record a new rule, decision or name there, not here.
