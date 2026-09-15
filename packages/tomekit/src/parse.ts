@@ -5,7 +5,7 @@ import type { Document as YamlDocument } from "yaml";
 
 import type { Issue } from "./errors";
 import type { Entry, FileInfo } from "./index";
-import { assertContentValue, isPlainObject } from "./value";
+import { assertContentValue, isList, isPlainObject } from "./value";
 
 const FRONTMATTER = /^---\r?\n(?:(?<data>[\s\S]*?)\r?\n)?---(?:\r?\n|$)/u;
 
@@ -97,7 +97,9 @@ function offsetOf(
 }
 
 /** Splits a Markdown file into an entry: frontmatter as metadata, the rest as body. Reads nothing from disk. */
-function parse({ file, filePath, text }: ParseInput): ParseResult {
+function parse({ file, filePath, text: raw }: ParseInput): ParseResult {
+  // Editors that save a byte order mark put it before the opening `---`, which would hide the frontmatter.
+  const text = raw.startsWith("﻿") ? raw.slice(1) : raw;
   const match = FRONTMATTER.exec(text);
   const frontmatter = match?.groups?.data;
 
@@ -137,7 +139,16 @@ function parse({ file, filePath, text }: ParseInput): ParseResult {
     return yaml === undefined ? undefined : positionAt(offsetOf(yaml, keys));
   }
 
-  const issues =
+  const frontmatterIssues = isPlainObject(metadata)
+    ? []
+    : [
+        {
+          ...locate([]),
+          message: `frontmatter must be keys and values, eg "title: Hello", not ${isList(metadata) ? "a list" : "a single value"}`,
+        },
+      ];
+
+  const slugIssues =
     slug === undefined || isSlug(slug)
       ? []
       : [
@@ -149,7 +160,7 @@ function parse({ file, filePath, text }: ParseInput): ParseResult {
         ];
 
   return {
-    issues,
+    issues: [...frontmatterIssues, ...slugIssues],
     entry: {
       body: match ? text.slice(match[0].length) : text,
       file: { name: path.basename(file), path: filePath },

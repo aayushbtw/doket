@@ -26,6 +26,37 @@ describe("parse", () => {
     });
   });
 
+  it("reads frontmatter after a byte order mark", () => {
+    const entry = entryOf("﻿---\ntitle: Hello\n---\nBody");
+
+    expect(entry).toMatchObject({ body: "Body", metadata: { title: "Hello" } });
+    expect(entry[LOCATE](["title"])).toStrictEqual({ column: 1, line: 2 });
+  });
+
+  it.each([
+    ["a list", "- a\n- b"],
+    ["a single value", "hello"],
+    ["a single value", "42"],
+  ])("reports frontmatter that is %s instead of keys", (kind, yaml) => {
+    expect(parseText(`---\n${yaml}\n---\n`)).toMatchObject({
+      entry: { metadata: {} },
+      issues: [
+        {
+          column: 1,
+          line: 2,
+          message: `frontmatter must be keys and values, eg "title: Hello", not ${kind}`,
+        },
+      ],
+    });
+  });
+
+  it("reads frontmatter that is null as empty", () => {
+    expect(parseText("---\nnull\n---\n")).toMatchObject({
+      entry: { metadata: {} },
+      issues: [],
+    });
+  });
+
   it("slugs a nested file by its path without the extension", () => {
     const entry = entryOf(
       "---\ntitle: Setup\n---\n",
@@ -84,6 +115,21 @@ describe("parse", () => {
     expect(entry[LOCATE](["meta", "author"])).toStrictEqual({
       column: 1,
       line: 3,
+    });
+  });
+
+  it("stops at a scalar, or at a list item that does not exist", () => {
+    const entry = entryOf("---\ntitle: A\ntags:\n  - one\n---\n");
+
+    expect(entry[LOCATE](["title", "x"])).toStrictEqual({ column: 1, line: 2 });
+    expect(entry[LOCATE](["tags", "3"])).toStrictEqual({ column: 1, line: 3 });
+    expect(entry[LOCATE](["tags", "0"])).toStrictEqual({ column: 5, line: 4 });
+  });
+
+  it("locates a key in empty frontmatter at the opening line", () => {
+    expect(entryOf("---\n\n---\n")[LOCATE](["title"])).toStrictEqual({
+      column: 1,
+      line: 1,
     });
   });
 
