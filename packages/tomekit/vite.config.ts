@@ -7,4 +7,7 @@ export default defineConfig({
     entry: ["src/index.ts", "src/content.ts", "src/query.ts", "src/vite.ts"],
     platform: "node",
   },
+  test: {
+    coverage: { include: ["src/**"] },
+  },
 });
