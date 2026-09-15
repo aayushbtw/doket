@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: [apps/**]
   pull_request:
+    paths-ignore: [apps/**]
 
 jobs:
   check:
@@ -15,7 +17,6 @@ jobs:
           node-version: 24
           cache: true
           run-install: true
-      # The site builds and deploys on Cloudflare, so CI covers only the library.
       - run: vp check packages
       - run: vp run --filter tomekit build
 
