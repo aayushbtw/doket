@@ -29,13 +29,13 @@ export default defineConfig({
       loader: {
         async load(context) {
           const written = await pages.load(context);
+          context.watch(apiReferenceWatch);
 
           return {
             ...written,
             entries: [...written.entries, ...apiReference(context.root).index],
           };
         },
-        watch: [...[pages.watch ?? []].flat(), apiReferenceWatch],
       },
       schema: z.object({
         description: z.string(),
@@ -48,8 +48,11 @@ export default defineConfig({
     // One page per tomekit export, linked from the API reference index pages.
     reference: {
       loader: {
-        load: ({ root }) => ({ entries: apiReference(root).items }),
-        watch: apiReferenceWatch,
+        load: ({ root, watch }) => {
+          watch(apiReferenceWatch);
+
+          return { entries: apiReference(root).items };
+        },
       },
       schema: z.object({
         kind: z.enum([
