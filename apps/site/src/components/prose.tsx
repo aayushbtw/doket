@@ -15,6 +15,7 @@ import {
   durations,
   fonts,
   fontSizes,
+  layout,
   lineHeights,
   radii,
   shadows,
@@ -76,6 +77,7 @@ const styles = stylex.create({
       ":first-child": 0,
       default: space.px24,
     },
+    scrollMarginTop: layout.contentTop,
   },
   h3: {
     color: colors.textPrimary,
@@ -85,6 +87,7 @@ const styles = stylex.create({
       ":first-child": 0,
       default: space.px16,
     },
+    scrollMarginTop: layout.contentTop,
   },
   h4: {
     color: colors.textPrimary,
@@ -94,6 +97,7 @@ const styles = stylex.create({
       ":first-child": 0,
       default: space.px8,
     },
+    scrollMarginTop: layout.contentTop,
   },
   hr: {
     borderBlockStartColor: colors.border,
