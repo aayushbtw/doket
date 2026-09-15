@@ -19,18 +19,12 @@ const config = defineConfig({
   resolve: { tsconfigPaths: true },
   run: {
     tasks: {
-      "api-reference": {
-        command: "node scripts/api-reference.ts",
-        dependsOn: ["tomekit#build"],
-      },
-      build: {
-        command: "vp build",
-        dependsOn: ["api-reference"],
-      },
+      // The API reference pages are loaded from tomekit's build.
+      build: { command: "vp build", dependsOn: ["tomekit#build"] },
       dev: {
         cache: false,
         command: "vp dev --port 3000",
-        dependsOn: ["api-reference"],
+        dependsOn: ["tomekit#build"],
       },
     },
   },

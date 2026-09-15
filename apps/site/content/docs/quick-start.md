@@ -8,13 +8,13 @@ order: 2
 ## Define a collection
 
 ```ts
-import { defineConfig } from "tomekit";
+import { defineConfig, directory } from "tomekit";
 import { z } from "zod";
 
 export default defineConfig({
   collections: {
     posts: {
-      directory: "content/posts",
+      loader: directory("content/posts"),
       schema: z.object({ title: z.string() }),
     },
   },
