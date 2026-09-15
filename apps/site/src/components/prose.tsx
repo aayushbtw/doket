@@ -9,7 +9,19 @@ import type { ComponentPropsWithoutRef } from "react";
 
 import { highlightCode } from "#/lib/highlight";
 
-import { colors, fonts, radii, shadows, tableRow } from "../tokens.stylex";
+import {
+  borderWidths,
+  colors,
+  durations,
+  fonts,
+  fontSizes,
+  lineHeights,
+  radii,
+  shadows,
+  space,
+  tableRow,
+  weights,
+} from "../tokens.stylex";
 import { typography } from "../typography";
 
 interface ProseProps {
@@ -18,36 +30,37 @@ interface ProseProps {
 
 const styles = stylex.create({
   a: {
-    color: colors.gray12,
+    color: colors.textPrimary,
     textDecorationColor: {
-      ":hover": colors.gray12,
-      default: colors.grayA6,
+      ":hover": colors.textPrimary,
+      default: colors.borderStrong,
     },
     textDecorationLine: "underline",
-    textUnderlineOffset: "2px",
-    transitionDuration: "0.15s",
+    textUnderlineOffset: space.px2,
+    transitionDuration: durations.fast,
     transitionProperty: "text-decoration-color",
   },
   blockquote: {
-    borderInlineStartColor: colors.grayA6,
+    borderInlineStartColor: colors.borderStrong,
     borderInlineStartStyle: "solid",
-    borderInlineStartWidth: "3px",
-    color: colors.gray10,
+    borderInlineStartWidth: borderWidths.thick,
+    color: colors.textMuted,
     marginBlockEnd: {
       ":last-child": 0,
-      default: "16px",
+      default: space.px16,
     },
-    paddingInlineStart: "16px",
+    paddingInlineStart: space.px16,
   },
   code: {
-    borderRadius: "3px",
-    boxShadow: shadows.level2,
-    color: colors.gray12,
+    borderRadius: radii.xs,
+    boxShadow: shadows.raised,
+    color: colors.textPrimary,
     fontFamily: fonts.mono,
-    fontSize: "11px",
-    paddingBlock: "2px",
-    paddingInline: "3px",
+    fontSize: fontSizes.xxs,
+    paddingBlock: space.px2,
+    paddingInline: space.px3,
     position: "relative",
+    // Optical: lifts the smaller mono text onto the prose baseline.
     verticalAlign: "1.5px",
   },
   codeInPre: {
@@ -56,89 +69,89 @@ const styles = stylex.create({
     minWidth: "100%",
   },
   h2: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 550',
-    marginBlockEnd: "8px",
+    color: colors.textPrimary,
+    fontVariationSettings: weights.emphasis,
+    marginBlockEnd: space.px8,
     marginBlockStart: {
       ":first-child": 0,
-      default: "24px",
+      default: space.px24,
     },
   },
   h3: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 700',
-    marginBlockEnd: "8px",
+    color: colors.textPrimary,
+    fontVariationSettings: weights.bold,
+    marginBlockEnd: space.px8,
     marginBlockStart: {
       ":first-child": 0,
-      default: "16px",
+      default: space.px16,
     },
   },
   h4: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 600',
-    marginBlockEnd: "8px",
+    color: colors.textPrimary,
+    fontVariationSettings: weights.semibold,
+    marginBlockEnd: space.px8,
     marginBlockStart: {
       ":first-child": 0,
-      default: "8px",
+      default: space.px8,
     },
   },
   hr: {
-    borderBlockStartColor: colors.grayA4,
+    borderBlockStartColor: colors.border,
     borderBlockStartStyle: "solid",
-    borderBlockStartWidth: "1px",
-    marginBlock: "32px",
+    borderBlockStartWidth: borderWidths.thin,
+    marginBlock: space.px32,
   },
   img: {
-    borderRadius: radii.medium,
+    borderRadius: radii.md,
     marginBlockEnd: {
       ":last-child": 0,
-      default: "16px",
+      default: space.px16,
     },
   },
   li: {
     "::marker": {
-      color: colors.gray8,
+      color: colors.textFaint,
     },
     listStyle: "inherit",
-    marginBlockEnd: "4px",
+    marginBlockEnd: space.px4,
   },
   ol: {
     listStyle: "decimal",
     marginBlockEnd: {
       ":last-child": 0,
-      default: "16px",
+      default: space.px16,
     },
-    paddingInlineStart: "20px",
+    paddingInlineStart: space.px20,
   },
   p: {
-    lineHeight: "24px",
+    lineHeight: lineHeights.base,
     marginBlockEnd: {
       ":last-child": 0,
-      default: "16px",
+      default: space.px16,
     },
   },
   pre: {
-    borderColor: colors.grayA4,
-    borderRadius: radii.medium,
+    borderColor: colors.border,
+    borderRadius: radii.md,
     borderStyle: "solid",
-    borderWidth: "1px",
-    color: colors.gray12,
+    borderWidth: borderWidths.thin,
+    color: colors.textPrimary,
     marginBlockEnd: {
       ":last-child": 0,
-      default: "24px",
+      default: space.px24,
     },
     overflowX: "auto",
-    paddingBlock: "12px",
-    paddingInline: "16px",
+    paddingBlock: space.px12,
+    paddingInline: space.px16,
     scrollbarWidth: "none",
     whiteSpace: "pre",
   },
   prose: {
-    color: colors.gray11,
+    color: colors.textSecondary,
     minWidth: 0,
   },
   strong: {
-    color: colors.gray12,
+    color: colors.textPrimary,
     fontWeight: 600,
   },
   table: {
@@ -147,48 +160,48 @@ const styles = stylex.create({
     minWidth: "100%",
   },
   tableScroll: {
-    borderRadius: radii.medium,
+    borderRadius: radii.md,
     marginBlockEnd: {
       ":last-child": 0,
-      default: "16px",
+      default: space.px16,
     },
     overflowX: "auto",
     scrollbarWidth: "none",
   },
   td: {
-    borderBlockEndColor: colors.grayA2,
+    borderBlockEndColor: colors.borderSubtle,
     borderBlockEndStyle: "solid",
     borderBlockEndWidth: {
       [stylex.when.ancestor(":last-child", tableRow)]: 0,
-      default: "1px",
+      default: borderWidths.thin,
     },
-    paddingBlock: "12px",
-    paddingInline: "16px",
+    paddingBlock: space.px12,
+    paddingInline: space.px16,
     textAlign: "start",
     whiteSpace: "nowrap",
   },
   th: {
-    backgroundColor: colors.grayA2,
+    backgroundColor: colors.fillSubtle,
     borderEndEndRadius: {
-      ":last-child": radii.medium,
+      ":last-child": radii.md,
       default: 0,
     },
     borderEndStartRadius: {
-      ":first-child": radii.medium,
+      ":first-child": radii.md,
       default: 0,
     },
     borderStartEndRadius: {
-      ":last-child": radii.medium,
+      ":last-child": radii.md,
       default: 0,
     },
     borderStartStartRadius: {
-      ":first-child": radii.medium,
+      ":first-child": radii.md,
       default: 0,
     },
-    color: colors.gray10,
-    fontVariationSettings: '"wght" 550',
-    paddingBlock: "12px",
-    paddingInline: "16px",
+    color: colors.textMuted,
+    fontVariationSettings: weights.emphasis,
+    paddingBlock: space.px12,
+    paddingInline: space.px16,
     textAlign: "start",
     whiteSpace: "nowrap",
   },
@@ -196,9 +209,9 @@ const styles = stylex.create({
     listStyle: "disc",
     marginBlockEnd: {
       ":last-child": 0,
-      default: "16px",
+      default: space.px16,
     },
-    paddingInlineStart: "20px",
+    paddingInlineStart: space.px20,
   },
 });
 

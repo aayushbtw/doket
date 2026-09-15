@@ -1,7 +1,15 @@
 import * as stylex from "@stylexjs/stylex";
 import { Link } from "@tanstack/react-router";
 
-import { colors, radii, shadows } from "../tokens.stylex";
+import {
+  borderWidths,
+  colors,
+  durations,
+  radii,
+  shadows,
+  space,
+  weights,
+} from "../tokens.stylex";
 import { typography } from "../typography";
 
 interface PageLink {
@@ -17,45 +25,45 @@ interface PageNavProps {
 const styles = stylex.create({
   card: {
     backgroundColor: {
-      ":hover": colors.grayA2,
+      ":hover": colors.fillSubtle,
       default: "transparent",
     },
-    borderRadius: radii.large,
-    boxShadow: shadows.level2,
-    color: colors.gray10,
+    borderRadius: radii.lg,
+    boxShadow: shadows.raised,
+    color: colors.textMuted,
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    gap: space.px4,
     gridColumn: {
       ":only-child": "1 / -1",
       default: "auto",
     },
-    paddingBlock: "12px",
-    paddingInline: "16px",
-    transitionDuration: "0.2s",
+    paddingBlock: space.px12,
+    paddingInline: space.px16,
+    transitionDuration: durations.slow,
     transitionProperty: "background-color",
     transitionTimingFunction: "ease",
   },
   direction: {
-    color: colors.gray9,
-    fontVariationSettings: '"wght" 500',
+    color: colors.textSubtle,
+    fontVariationSettings: weights.medium,
   },
   nav: {
-    borderBlockStartColor: colors.grayA4,
+    borderBlockStartColor: colors.border,
     borderBlockStartStyle: "solid",
-    borderBlockStartWidth: "1px",
+    borderBlockStartWidth: borderWidths.thin,
     display: "grid",
-    gap: "24px",
+    gap: space.px24,
     gridTemplateColumns: "1fr 1fr",
-    marginBlockStart: "48px",
-    paddingBlock: "32px",
+    marginBlockStart: space.px48,
+    paddingBlock: space.px32,
   },
   next: {
     textAlign: "end",
   },
   title: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 550',
+    color: colors.textPrimary,
+    fontVariationSettings: weights.emphasis,
   },
 });
 

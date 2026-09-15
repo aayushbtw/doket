@@ -1,35 +1,35 @@
 import * as stylex from "@stylexjs/stylex";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { colors, layout } from "../tokens.stylex";
+import { colors, layout, space, weights } from "../tokens.stylex";
 import { typography } from "../typography";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 const styles = stylex.create({
   description: {
-    color: colors.gray11,
-    marginBlockEnd: "24px",
+    color: colors.textSecondary,
+    marginBlockEnd: space.px24,
   },
   link: {
-    color: colors.gray12,
+    color: colors.textPrimary,
     textDecorationColor: {
-      ":hover": colors.gray12,
-      default: colors.grayA6,
+      ":hover": colors.textPrimary,
+      default: colors.borderStrong,
     },
     textDecorationLine: "underline",
-    textUnderlineOffset: "2px",
+    textUnderlineOffset: space.px2,
   },
   main: {
     marginInline: "auto",
-    maxWidth: "768px",
+    maxWidth: layout.bodyWidth,
     paddingBlockStart: layout.contentTop,
     paddingInline: layout.pagePadding,
   },
   title: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 600',
-    marginBlockEnd: "8px",
+    color: colors.textPrimary,
+    fontVariationSettings: weights.semibold,
+    marginBlockEnd: space.px8,
   },
 });
 

@@ -6,7 +6,16 @@ import { Prose } from "#/components/prose";
 import { Toc } from "#/components/toc";
 import { getDoc } from "#/lib/docs";
 
-import { colors, layout, text } from "../tokens.stylex";
+import {
+  below,
+  colors,
+  fontSizes,
+  layout,
+  letterSpacings,
+  lineHeights,
+  space,
+  weights,
+} from "../tokens.stylex";
 import { typography } from "../typography";
 
 // Not sorted: `loader` must come before `head` and `component`, which infer `loaderData` from it.
@@ -18,38 +27,36 @@ export const Route = createFileRoute("/docs/$slug")({
   component: Doc,
 });
 
-const narrow = "@media (width <= 768px)";
-
 const styles = stylex.create({
   article: {
     flex: 1,
     minWidth: 0,
-    paddingBlockEnd: "80px",
+    paddingBlockEnd: space.px80,
     paddingBlockStart: layout.contentTop,
   },
   description: {
-    color: colors.gray11,
-    marginBlockEnd: "16px",
+    color: colors.textSecondary,
+    marginBlockEnd: space.px16,
   },
   title: {
-    color: colors.gray12,
+    color: colors.textPrimary,
     fontSize: {
-      [narrow]: "22px",
-      default: text.xlSize,
+      [below.md]: fontSizes.xxl,
+      default: fontSizes.xl,
     },
     fontVariationSettings: {
-      [narrow]: '"wght" 700',
-      default: '"wght" 600',
+      [below.md]: weights.bold,
+      default: weights.semibold,
     },
     letterSpacing: {
-      [narrow]: "-0.403px",
-      default: text.xlTracking,
+      [below.md]: letterSpacings.xxl,
+      default: letterSpacings.xl,
     },
     lineHeight: {
-      [narrow]: 1.2,
-      default: text.xlLeading,
+      [below.md]: lineHeights.xxl,
+      default: lineHeights.xl,
     },
-    marginBlockEnd: "8px",
+    marginBlockEnd: space.px8,
   },
 });
 

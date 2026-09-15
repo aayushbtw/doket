@@ -1,34 +1,42 @@
 import * as stylex from "@stylexjs/stylex";
 import { Link } from "@tanstack/react-router";
 
-import { colors, layout, radii } from "../tokens.stylex";
+import {
+  colors,
+  durations,
+  layout,
+  radii,
+  space,
+  weights,
+  zIndices,
+} from "../tokens.stylex";
 import { typography } from "../typography";
 
 const styles = stylex.create({
   github: {
     alignItems: "center",
     backgroundColor: {
-      ":hover": colors.grayA3,
+      ":hover": colors.fill,
       default: "transparent",
     },
-    borderRadius: radii.small,
+    borderRadius: radii.sm,
     color: {
-      ":hover": colors.gray12,
-      default: colors.gray10,
+      ":hover": colors.textPrimary,
+      default: colors.textMuted,
     },
     display: "flex",
-    height: "28px",
-    paddingInline: "10px",
-    transitionDuration: "0.15s",
+    height: layout.itemHeight,
+    paddingInline: space.px10,
+    transitionDuration: durations.fast,
     transitionProperty: "color, background-color",
   },
   header: {
-    backgroundColor: colors.gray1,
+    backgroundColor: colors.background,
     height: layout.pageTop,
     insetInline: 0,
     position: "fixed",
     top: 0,
-    zIndex: 30,
+    zIndex: zIndices.header,
   },
   inner: {
     alignItems: "center",
@@ -40,8 +48,8 @@ const styles = stylex.create({
     paddingInline: layout.pagePadding,
   },
   logo: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 600',
+    color: colors.textPrimary,
+    fontVariationSettings: weights.semibold,
   },
 });
 

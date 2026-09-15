@@ -1,7 +1,16 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { colors, layout, radii } from "../tokens.stylex";
+import {
+  below,
+  colors,
+  durations,
+  layout,
+  radii,
+  space,
+  weights,
+  zIndices,
+} from "../tokens.stylex";
 import { typography } from "../typography";
 
 interface Heading {
@@ -23,20 +32,20 @@ const passedLine = 104;
 
 const styles = stylex.create({
   active: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 550',
+    color: colors.textPrimary,
+    fontVariationSettings: weights.emphasis,
   },
   highlight: {
-    backgroundColor: colors.grayA2,
-    borderRadius: radii.small,
+    backgroundColor: colors.fillSubtle,
+    borderRadius: radii.sm,
     insetInline: 0,
     opacity: 0,
     pointerEvents: "none",
     position: "absolute",
-    transitionDuration: "0.15s",
+    transitionDuration: durations.fast,
     transitionProperty: "top, height, opacity",
     transitionTimingFunction: "ease",
-    zIndex: -1,
+    zIndex: zIndices.behind,
   },
   highlightAt: (top: string, height: string) => ({
     height,
@@ -44,21 +53,21 @@ const styles = stylex.create({
     top,
   }),
   label: {
-    color: colors.gray11,
-    fontVariationSettings: '"wght" 500',
-    marginBlockEnd: "12px",
-    paddingInlineStart: "12px",
+    color: colors.textSecondary,
+    fontVariationSettings: weights.medium,
+    marginBlockEnd: space.px12,
+    paddingInlineStart: space.px12,
   },
   link: {
-    borderRadius: radii.small,
+    borderRadius: radii.sm,
     color: {
-      ":hover": colors.gray12,
-      default: colors.gray9,
+      ":hover": colors.textPrimary,
+      default: colors.textSubtle,
     },
     display: "block",
-    paddingBlock: "6px",
-    paddingInlineStart: "12px",
-    transitionDuration: "0.15s",
+    paddingBlock: space.px6,
+    paddingInlineStart: space.px12,
+    transitionDuration: durations.fast,
     transitionProperty: "color",
   },
   list: {
@@ -71,12 +80,12 @@ const styles = stylex.create({
   },
   toc: {
     display: {
-      "@media (width <= 1280px)": "none",
+      [below.xl]: "none",
       default: "block",
     },
     flexShrink: 0,
     height: "100dvh",
-    marginInlineStart: "48px",
+    marginInlineStart: layout.columnGap,
     overflowY: "auto",
     paddingBlockStart: layout.contentTop,
     position: "sticky",

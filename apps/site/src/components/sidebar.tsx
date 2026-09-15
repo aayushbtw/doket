@@ -1,7 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { Link, useParams } from "@tanstack/react-router";
 
-import { colors, layout } from "../tokens.stylex";
+import {
+  below,
+  colors,
+  durations,
+  layout,
+  space,
+  weights,
+} from "../tokens.stylex";
 import { typography } from "../typography";
 
 interface SidebarProps {
@@ -13,35 +20,35 @@ interface SidebarProps {
 
 const styles = stylex.create({
   active: {
-    color: colors.gray12,
-    fontVariationSettings: '"wght" 500',
+    color: colors.textPrimary,
+    fontVariationSettings: weights.medium,
   },
   label: {
     alignItems: "center",
-    color: colors.gray12,
+    color: colors.textPrimary,
     display: "flex",
-    fontVariationSettings: '"wght" 500',
-    height: "28px",
+    fontVariationSettings: weights.medium,
+    height: layout.itemHeight,
   },
   link: {
     alignItems: "center",
     color: {
-      ":hover": colors.gray12,
-      default: colors.gray10,
+      ":hover": colors.textPrimary,
+      default: colors.textMuted,
     },
     display: "flex",
     fontVariationSettings: {
-      ":hover": '"wght" 500',
-      default: '"wght" 400',
+      ":hover": weights.medium,
+      default: weights.regular,
     },
-    height: "28px",
-    transitionDuration: "0.15s",
+    height: layout.itemHeight,
+    transitionDuration: durations.fast,
     transitionProperty: "color, font-variation-settings",
   },
   nav: {
     display: "flex",
     flexDirection: "column",
-    gap: "24px",
+    gap: space.px24,
   },
   section: {
     display: "flex",
@@ -49,13 +56,13 @@ const styles = stylex.create({
   },
   sidebar: {
     display: {
-      "@media (width <= 1024px)": "none",
+      [below.lg]: "none",
       default: "flex",
     },
     flexDirection: "column",
     flexShrink: 0,
     height: "100dvh",
-    marginInlineEnd: "48px",
+    marginInlineEnd: layout.columnGap,
     overflowY: "auto",
     paddingBlockStart: layout.contentTop,
     position: "sticky",

@@ -51,8 +51,8 @@ export const Route = createRootRoute({
 
 const styles = stylex.create({
   body: {
-    backgroundColor: colors.gray1,
-    color: colors.gray12,
+    backgroundColor: colors.background,
+    color: colors.textPrimary,
     fontFamily: fonts.sans,
   },
 });
