@@ -31,11 +31,13 @@ function label({ collection = "", file, slug }: ContentSubject): string {
  */
 class ContentError extends TomekitError {
   override name = "ContentError";
+  /** The collection's name, or `undefined` when the problem is not tied to one. */
   readonly collection: string | undefined;
   readonly column: number | undefined;
   /** Relative to the project root, or `undefined` when the entry has no file. */
   readonly file: string | undefined;
   readonly line: number | undefined;
+  /** The entry's slug, or `undefined` when the problem is with a file or a whole collection. */
   readonly slug: string | undefined;
 
   constructor(subject: ContentSubject, issue: Issue, options?: ErrorOptions) {

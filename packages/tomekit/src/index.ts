@@ -99,12 +99,17 @@ interface LoadContext {
 
 /** A problem a loader found, eg a file whose frontmatter does not parse. tomekit reports it like a schema error. */
 interface LoadIssue {
+  /** What went wrong underneath, eg the error `readFile` threw. Becomes the `ContentError`'s `cause`. */
   cause?: unknown;
+  /** Starts at 1. */
   column?: number;
-  /** Relative to the project root. */
+  /** The entry's file, relative to the project root. */
   file?: string;
+  /** Starts at 1. */
   line?: number;
+  /** What went wrong, then what to do, eg `title: expected a string. Add a title`. */
   message: string;
+  /** The entry's slug, for an entry without a file. */
   slug?: string;
 }
 
