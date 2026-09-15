@@ -147,7 +147,7 @@ interface TransformContext<TName extends string = string> {
   /** The name of the collection, eg `posts`. */
   collection: TName;
   /**
-   * Leaves this file out of the collection. Return its result.
+   * Leaves this entry out of the collection. Return its result.
    *
    * @example
    * ```ts
