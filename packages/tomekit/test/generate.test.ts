@@ -43,6 +43,38 @@ describe("writeTypes", () => {
     expect(types).toContain("export declare const collections: {");
   });
 
+  it("exports the same names as the tomekit/content fallback", async () => {
+    const root = await project();
+    const directory = path.join(root, ".tomekit");
+
+    await writeTypes(directory, path.join(root, "tomekit.config.ts"), [
+      { name: "posts", slugs: [] },
+    ]);
+
+    const generated = await readFile(
+      path.join(directory, "content.d.ts"),
+      "utf-8"
+    );
+
+    const fallback = await readFile(
+      path.join(import.meta.dirname, "..", "src", "content.ts"),
+      "utf-8"
+    );
+
+    const generatedNames = [
+      ...generated.matchAll(/^export (?:type|declare const) (\w+)/gmu),
+    ].map(([, name]) => name);
+
+    const fallbackNames = (
+      /^export \{(?<names>[^}]*)\}/mu.exec(fallback)?.groups?.names ?? ""
+    )
+      .split(",")
+      .map((name) => name.replace(/^\s*type\s+/u, "").trim())
+      .filter((name) => name !== "");
+
+    expect(generatedNames.toSorted()).toStrictEqual(fallbackNames.toSorted());
+  });
+
   it("writes nothing when the types are unchanged", async () => {
     const root = await project();
     const directory = path.join(root, ".tomekit");
