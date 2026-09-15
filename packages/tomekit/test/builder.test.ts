@@ -62,6 +62,7 @@ async function createBuilder(
 
   const builder = new ContentBuilder({
     configPath: path.join(project.root, "tomekit.config.ts"),
+    dev: false,
     root: project.root,
     runtime: QUERY,
     types: types === false ? false : path.join(project.root, types),

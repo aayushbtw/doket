@@ -19,8 +19,9 @@ export default defineConfig({
     posts: defineCollection({
       loader: directory("content/posts"),
       schema: z.object({ date: z.coerce.date(), title: z.string() }),
-      transform: (source) => {
+      transform: (source, { dev }) => {
         globalThis.tomekitRuns = (globalThis.tomekitRuns ?? 0) + 1;
+        globalThis.tomekitDev = dev;
         return {
           metadata: { date: source.metadata.date, title: source.metadata.title },
         };
@@ -77,6 +78,7 @@ interface Collections {
 }
 
 declare global {
+  var tomekitDev: boolean | undefined;
   var tomekitRuns: number | undefined;
 }
 
@@ -134,6 +136,7 @@ let server: ViteDevServer | undefined;
 let cleanup: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
+  globalThis.tomekitDev = undefined;
   globalThis.tomekitRuns = 0;
   await server?.close();
   await cleanup?.();
@@ -194,6 +197,7 @@ describe("tomekit()", () => {
       "Later",
     ]);
     expect(posts.get("hello")?.metadata.date).toBeInstanceOf(Date);
+    expect(globalThis.tomekitDev).toBe(true);
   });
 
   it("serves collection names, and nothing for an unknown name", async () => {

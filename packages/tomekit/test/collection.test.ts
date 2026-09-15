@@ -92,7 +92,36 @@ describe("loadCollection", () => {
 
     await loadCollection("posts", recorded, ROOT);
 
-    expect(seen).toStrictEqual([{ collection: "posts", root: ROOT }]);
+    expect(seen).toStrictEqual([
+      { collection: "posts", dev: false, root: ROOT },
+    ]);
+  });
+
+  it("tells the loader and the transform whether the dev server is running", async () => {
+    const seen: boolean[] = [];
+
+    const drafts = defineCollection({
+      loader: {
+        load: ({ dev }) => {
+          seen.push(dev);
+
+          return { entries: [{ metadata: { title: "Draft" }, slug: "draft" }] };
+        },
+      },
+      schema,
+      transform: (_source, { dev, skip }) => {
+        seen.push(dev);
+
+        return dev ? {} : skip("draft");
+      },
+    });
+
+    const built = await loadCollection("posts", drafts, ROOT);
+    const served = await loadCollection("posts", drafts, ROOT, { dev: true });
+
+    expect(seen).toStrictEqual([false, false, true, true]);
+    expect(built.documents).toHaveLength(0);
+    expect(served.documents).toHaveLength(1);
   });
 
   it("passes the loader's warnings and issues on", async () => {

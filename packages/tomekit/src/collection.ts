@@ -64,12 +64,12 @@ async function loadCollection(
   name: string,
   collection: CollectionConfig,
   root: string,
-  { cache }: { cache?: EntryCache } = {}
+  { cache, dev = false }: { cache?: EntryCache; dev?: boolean } = {}
 ): Promise<CollectionResult> {
   let loaded: unknown;
 
   try {
-    loaded = await collection.loader.load({ collection: name, root });
+    loaded = await collection.loader.load({ collection: name, dev, root });
   } catch (error) {
     return {
       documents: [],
@@ -122,6 +122,7 @@ async function loadCollection(
       return await loadEntry(name, collection, entry, {
         broken: reported.has(key),
         cache,
+        dev,
       });
     })
   );
@@ -197,7 +198,7 @@ async function loadEntry(
   name: string,
   collection: CollectionConfig,
   entry: Entry,
-  { broken, cache }: { broken: boolean; cache?: EntryCache }
+  { broken, cache, dev }: { broken: boolean; cache?: EntryCache; dev: boolean }
 ): Promise<EntryResult> {
   const file = entry.file?.path;
   const subject = { collection: name, file, slug: entry.slug };
@@ -277,7 +278,7 @@ async function loadEntry(
 
   try {
     const result: unknown = collection.transform
-      ? await collection.transform(source, { collection: name, skip })
+      ? await collection.transform(source, { collection: name, dev, skip })
       : {};
 
     if (result instanceof Skipped) {

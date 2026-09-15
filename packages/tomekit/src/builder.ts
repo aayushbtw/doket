@@ -32,6 +32,8 @@ interface Build {
 interface BuilderOptions {
   /** Absolute path of the config file. */
   configPath: string;
+  /** Whether the Vite dev server is running. Passed to loaders and transforms. */
+  dev: boolean;
   root: string;
   /** Absolute path of the runtime the generated module imports. */
   runtime: string;
@@ -195,7 +197,7 @@ class ContentBuilder {
   }
 
   async #run(): Promise<Build> {
-    const { configPath, root, runtime, types } = this.#options;
+    const { configPath, dev, root, runtime, types } = this.#options;
     this.#config ??= this.#importConfig();
     const imported = this.#config;
     let config: Config;
@@ -226,7 +228,7 @@ class ContentBuilder {
 
         const result =
           this.#results.get(name) ??
-          (await loadCollection(name, collection, root, { cache }));
+          (await loadCollection(name, collection, root, { cache, dev }));
 
         if (this.#version === version) {
           this.#results.set(name, result);

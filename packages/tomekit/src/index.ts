@@ -111,6 +111,8 @@ interface Entry<TFile extends FileInfo | undefined = FileInfo | undefined> {
 interface LoadContext {
   /** The name of the collection, eg `posts`. */
   collection: string;
+  /** Whether the Vite dev server is running, as opposed to a build. */
+  dev: boolean;
   /** The project root, as an absolute path. */
   root: string;
 }
@@ -191,6 +193,15 @@ interface Loader<TFile extends FileInfo | undefined = FileInfo | undefined> {
 interface TransformContext<TName extends string = string> {
   /** The name of the collection, eg `posts`. */
   collection: TName;
+  /**
+   * Whether the Vite dev server is running, as opposed to a build.
+   *
+   * @example
+   * ```ts
+   * transform: ({ metadata }, { dev, skip }) => (metadata.draft && !dev ? skip("draft") : {})
+   * ```
+   */
+  dev: boolean;
   /**
    * Leaves this entry out of the collection. Return its result.
    *

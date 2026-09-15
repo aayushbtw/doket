@@ -185,6 +185,7 @@ function tomekit({
       ({ logger, root } = resolved);
       builder = new ContentBuilder({
         configPath: path.resolve(root, config),
+        dev: resolved.command === "serve",
         root,
         runtime: RUNTIME,
         types: types === false ? false : path.resolve(root, types),
