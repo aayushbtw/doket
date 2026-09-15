@@ -126,9 +126,9 @@ interface LoadResult<
  *
  * @example
  * ```ts
- * const loader: Loader = {
- *   load: async () => ({
- *     entries: (await fetchPages()).map((page) => ({ body: page.markdown, metadata: { title: page.title }, slug: page.id })),
+ * const pages: Loader = {
+ *   load: () => ({
+ *     entries: [{ body: "# Hello", metadata: { title: "Hello" }, slug: "hello" }],
  *   }),
  * };
  * ```
