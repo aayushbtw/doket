@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 
+import type { Glob } from "./directory";
 import { assertTransformResult, buildDocument } from "./document";
 import { ContentError } from "./errors";
 import type { Issue } from "./errors";
@@ -30,14 +32,25 @@ interface BuiltDocument {
 /** An entry's last result by slug, reused while the entry and the config are unchanged. */
 type EntryCache = Map<string, { document: BuiltDocument; hash: string }>;
 
+/** One `watch` call's globs, as absolute patterns. */
+interface WatchGroup {
+  /** Only leaves out files matched by `include` from the same call. */
+  exclude: string[];
+  include: string[];
+}
+
 interface CollectionResult {
   /** Slugs of entries with errors, so a reference to one can say why it does not resolve. */
   broken: Set<string>;
   /** Every kept document, in the loader's order. Broken entries are left out. */
   documents: BuiltDocument[];
   errors: ContentError[];
+  /** Whether `load` threw or returned no `entries` array. */
+  failed: boolean;
   /** Slugs a transform skipped, with the reason it gave. */
   skipped: Map<string, string | undefined>;
+  /** Every `watch` call `load` made, including before it threw. */
+  watched: WatchGroup[];
   warnings: string[];
 }
 
@@ -71,12 +84,39 @@ async function loadCollection(
   name: string,
   collection: CollectionConfig,
   root: string,
-  { cache, dev = false }: { cache?: EntryCache; dev?: boolean } = {}
+  {
+    cache,
+    dev = false,
+    watched = [],
+  }: {
+    cache?: EntryCache;
+    dev?: boolean;
+    /** Receives each `watch` call as it happens, so a caller can match changes while `load` runs. */
+    watched?: WatchGroup[];
+  } = {}
 ): Promise<CollectionResult> {
   let loaded: unknown;
 
+  function watch(patterns: Glob | readonly Glob[]) {
+    const list = [patterns].flat();
+
+    watched.push({
+      exclude: list
+        .filter((pattern) => pattern.startsWith("!"))
+        .map((pattern) => path.resolve(root, pattern.slice(1))),
+      include: list
+        .filter((pattern) => !pattern.startsWith("!"))
+        .map((pattern) => path.resolve(root, pattern)),
+    });
+  }
+
   try {
-    loaded = await collection.loader.load({ collection: name, dev, root });
+    loaded = await collection.loader.load({
+      collection: name,
+      dev,
+      root,
+      watch,
+    });
   } catch (error) {
     return {
       broken: new Set(),
@@ -88,8 +128,10 @@ async function loadCollection(
           { cause: error }
         ),
       ],
+      failed: true,
       skipped: new Map(),
       warnings: [],
+      watched,
     };
   }
 
@@ -106,8 +148,10 @@ async function loadCollection(
           }
         ),
       ],
+      failed: true,
       skipped: new Map(),
       warnings: [],
+      watched,
     };
   }
 
@@ -187,8 +231,10 @@ async function loadCollection(
     broken,
     documents,
     errors,
+    failed: false,
     skipped,
     warnings: [...(loaded.warnings ?? [])],
+    watched,
   };
 }
 
@@ -337,4 +383,5 @@ export {
   type CollectionResult,
   type EntryCache,
   loadCollection,
+  type WatchGroup,
 };

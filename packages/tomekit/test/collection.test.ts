@@ -81,8 +81,8 @@ describe("loadCollection", () => {
 
     const recorded = defineCollection({
       loader: {
-        load: (context) => {
-          seen.push(context);
+        load: ({ collection, dev, root }) => {
+          seen.push({ collection, dev, root });
 
           return { entries: [] };
         },

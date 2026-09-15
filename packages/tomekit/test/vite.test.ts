@@ -42,10 +42,12 @@ export default defineConfig({
   collections: {
     pages: {
       loader: {
-        load: async ({ root }) => ({
-          entries: JSON.parse(await readFile(path.join(root, "data/pages.json"), "utf-8")),
-        }),
-        watch: "data/*.json",
+        load: async ({ root, watch }) => {
+          watch("data/*.json");
+          return {
+            entries: JSON.parse(await readFile(path.join(root, "data/pages.json"), "utf-8")),
+          };
+        },
       },
       schema: z.object({ title: z.string() }),
     },

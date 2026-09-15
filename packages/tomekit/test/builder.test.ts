@@ -17,11 +17,11 @@ export default defineConfig({
   collections: {
     data: defineCollection({
       loader: {
-        load: () => {
+        load: ({ watch }) => {
           globalThis.tomekitLoads = (globalThis.tomekitLoads ?? 0) + 1;
+          watch("data/*.json");
           return { entries: [{ slug: "one" }] };
         },
-        watch: "data/*.json",
       },
       schema: z.object({}),
     }),
@@ -58,13 +58,13 @@ export default defineConfig({
   collections: {
     data: {
       loader: {
-        load: async () => {
+        load: async ({ watch }) => {
           globalThis.tomekitLoads = (globalThis.tomekitLoads ?? 0) + 1;
           const run = globalThis.tomekitLoads;
+          watch("data/*.json");
           await globalThis.tomekitGate;
           return { entries: [{ slug: \`run\${run}\` }] };
         },
-        watch: "data/*.json",
       },
       schema: z.object({}),
     },
@@ -88,10 +88,60 @@ import { defineConfig } from ${JSON.stringify(SOURCE)};
 export default defineConfig({
   collections: {
     file: {
-      loader: { load: () => ({ entries: [] }), watch: "data/site.json" },
+      loader: {
+        load: ({ watch }) => {
+          watch("data/site.json");
+          return { entries: [] };
+        },
+      },
       schema: z.object({}),
     },
     plain: { loader: { load: () => ({ entries: [] }) }, schema: z.object({}) },
+  },
+});
+`;
+
+// \`directory()\` leaves \`content/api\` out, and the loader around it watches that folder itself.
+const composed = `
+import { z } from "zod";
+import { defineConfig, directory } from ${JSON.stringify(SOURCE)};
+
+const pages = directory("content", { exclude: "api/**" });
+
+export default defineConfig({
+  collections: {
+    docs: {
+      loader: {
+        load: async (context) => {
+          const written = await pages.load(context);
+          context.watch("content/api/*.md");
+          return written;
+        },
+      },
+      schema: z.object({}),
+    },
+  },
+});
+`;
+
+// Watches on its first run and throws before watching on every later one.
+const breaking = `
+import { z } from "zod";
+import { defineConfig } from ${JSON.stringify(SOURCE)};
+
+export default defineConfig({
+  collections: {
+    data: {
+      loader: {
+        load: ({ watch }) => {
+          globalThis.tomekitLoads = (globalThis.tomekitLoads ?? 0) + 1;
+          if (globalThis.tomekitLoads > 1) throw new Error("broken data");
+          watch("data/*.json");
+          return { entries: [] };
+        },
+      },
+      schema: z.object({}),
+    },
   },
 });
 `;
@@ -300,6 +350,34 @@ describe("ContentBuilder", () => {
     );
     expect(changed("data/site.json")).toBe(true);
     expect(changed("data/other.json")).toBe(false);
+  });
+
+  it("leaves files out only for the watch call that excluded them", async () => {
+    const { builder, changed } = await createBuilder({
+      "content/guide.md": HELLO,
+      "tomekit.config.ts": composed,
+    });
+
+    await builder.load();
+
+    expect(changed("content/api/types.md")).toBe(true);
+    expect(changed("content/guide.md")).toBe(true);
+    expect(changed("content/api/types.txt")).toBe(false);
+  });
+
+  it("keeps watching after a load throws before it calls watch", async () => {
+    const { builder, changed } = await createBuilder({
+      "tomekit.config.ts": breaking,
+    });
+
+    await builder.load();
+    changed("data/pages.json");
+    const broken = await builder.load();
+
+    expect(broken.errors.map((error) => error.message)).toStrictEqual([
+      'collections.get("data"): the loader failed: broken data',
+    ]);
+    expect(changed("data/pages.json")).toBe(true);
   });
 
   it("drops a result from a build that a change made stale", async () => {

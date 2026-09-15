@@ -115,6 +115,24 @@ interface LoadContext {
   dev: boolean;
   /** The project root, as an absolute path. */
   root: string;
+  /**
+   * Reruns `load` in dev when a file matching these globs changes. Patterns
+   * are relative to the project root; start one with `!` to leave files out.
+   * A `!` pattern only leaves out files from the same call, so loaders that
+   * call each other's `load` keep their own globs. Without a call, `load`
+   * reruns only when the config changes.
+   *
+   * @example
+   * ```ts
+   * const authors: Loader = {
+   *   load: async ({ root, watch }) => {
+   *     watch("data/authors.json");
+   *     return { entries: JSON.parse(await readFile(path.join(root, "data/authors.json"), "utf-8")) };
+   *   },
+   * };
+   * ```
+   */
+  watch: (patterns: Glob | readonly Glob[]) => void;
 }
 
 /**
@@ -181,12 +199,10 @@ interface LoadResult<
  * ```
  */
 interface Loader<TFile extends FileInfo | undefined = FileInfo | undefined> {
-  /** Runs on every build, and in dev again when the config or a `watch` file changes. Throwing fails the whole collection. */
+  /** Runs on every build, and in dev again when the config or a file it watches changes. Throwing fails the whole collection. */
   load: (
     context: LoadContext
   ) => LoadResult<TFile> | PromiseLike<LoadResult<TFile>>;
-  /** Glob patterns, relative to the project root, of files whose changes rerun `load` in dev, eg `"data/*.json"`. Start a pattern with `!` to leave matching files out, eg `"!data/drafts/**"`. */
-  watch?: Glob | readonly Glob[];
 }
 
 /** The second argument to `transform`. */

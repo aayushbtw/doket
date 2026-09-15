@@ -4,7 +4,7 @@ import path from "node:path";
 import { runnerImport } from "vite";
 
 import { loadCollection } from "./collection";
-import type { CollectionResult, EntryCache } from "./collection";
+import type { CollectionResult, EntryCache, WatchGroup } from "./collection";
 import { configIssues } from "./config";
 import {
   ConfigLoadError,
@@ -55,21 +55,11 @@ function globBase(pattern: string): string {
   return (wildcard === -1 ? segments : segments.slice(0, wildcard)).join("/");
 }
 
-/** Each collection's watch globs as absolute patterns, split into files to watch and `!` files to leave out. */
-function watchPatterns(root: string, config: Config | undefined) {
-  return Object.entries(config?.collections ?? {}).map(([name, collection]) => {
-    const patterns = [collection.loader.watch ?? []].flat();
-
-    return {
-      exclude: patterns
-        .filter((pattern) => pattern.startsWith("!"))
-        .map((pattern) => path.resolve(root, pattern.slice(1))),
-      include: patterns
-        .filter((pattern) => !pattern.startsWith("!"))
-        .map((pattern) => path.resolve(root, pattern)),
-      name,
-    };
-  });
+function matches(file: string, { exclude, include }: WatchGroup): boolean {
+  return (
+    include.some((pattern) => path.matchesGlob(file, pattern)) &&
+    !exclude.some((pattern) => path.matchesGlob(file, pattern))
+  );
 }
 
 function isConfig(value: unknown): value is Config {
@@ -88,13 +78,15 @@ function isConfig(value: unknown): value is Config {
 class ContentBuilder {
   readonly #options: BuilderOptions;
   #config: Promise<Config> | undefined;
-  /** The last config that loaded, to match changed files while a new one loads. */
-  #current: Config | undefined;
   // Kept after a failed import, so fixing a dependency of the config still reloads.
   #dependencies: string[] = [];
   readonly #caches = new Map<string, EntryCache>();
-  /** Each collection's last result, reused until one of its `watch` files or the config changes. */
+  /** Each collection's last result, reused until a file it watches or the config changes. */
   readonly #results = new Map<string, CollectionResult>();
+  /** Each collection's `watch` calls from its last `load`. */
+  readonly #watched = new Map<string, readonly WatchGroup[]>();
+  /** `watch` calls from loads still running, so a change during a slow `load` still reruns it. */
+  readonly #pending = new Map<string, WatchGroup[]>();
   /** Bumped on every change, so a build that started before it doesn't keep stale results. */
   #version = 0;
   #build: Promise<Build> | undefined;
@@ -106,11 +98,11 @@ class ContentBuilder {
 
   /** Files and folders whose changes `changed` looks for, for the dev watcher and `vite build --watch`. */
   get watchFiles(): string[] {
-    const { configPath, root } = this.#options;
+    const { configPath } = this.#options;
 
-    const bases = watchPatterns(root, this.#current).flatMap(({ include }) =>
-      include.map(globBase)
-    );
+    const bases = [...this.#watched.values(), ...this.#pending.values()]
+      .flat()
+      .flatMap(({ include }) => include.map(globBase));
 
     return [...new Set([configPath, ...this.#dependencies, ...bases])];
   }
@@ -140,20 +132,17 @@ class ContentBuilder {
    * anything was dropped.
    */
   changed(file: string): boolean {
-    const { configPath, root } = this.#options;
+    const { configPath } = this.#options;
 
     if (file === configPath || this.#dependencies.includes(file)) {
       this.#config = undefined;
       this.#caches.clear();
       this.#results.clear();
     } else {
-      const names = watchPatterns(root, this.#current)
-        .filter(
-          ({ exclude, include }) =>
-            include.some((pattern) => path.matchesGlob(file, pattern)) &&
-            !exclude.some((pattern) => path.matchesGlob(file, pattern))
-        )
-        .map(({ name }) => name);
+      const names = [...this.#watched, ...this.#pending].flatMap(
+        ([name, groups]) =>
+          groups.some((group) => matches(file, group)) ? [name] : []
+      );
 
       if (names.length === 0) {
         return false;
@@ -213,7 +202,6 @@ class ContentBuilder {
       throw error;
     }
 
-    this.#current = config;
     const issues = configIssues(config);
 
     if (issues.length > 0) {
@@ -227,17 +215,49 @@ class ContentBuilder {
         const cache = this.#caches.get(name) ?? new Map();
         this.#caches.set(name, cache);
 
+        const reused = this.#results.get(name);
+        const watched: WatchGroup[] = [];
+
+        if (reused === undefined) {
+          this.#pending.set(name, watched);
+        }
+
         const result =
-          this.#results.get(name) ??
-          (await loadCollection(name, collection, root, { cache, dev }));
+          reused ??
+          (await loadCollection(name, collection, root, {
+            cache,
+            dev,
+            watched,
+          }));
+
+        if (this.#pending.get(name) === watched) {
+          this.#pending.delete(name);
+        }
 
         if (this.#version === version) {
           this.#results.set(name, result);
+          const previous = this.#watched.get(name);
+
+          // Kept after a failed load, so fixing what broke it still reruns `load`.
+          if (reused === undefined) {
+            this.#watched.set(
+              name,
+              result.failed && previous !== undefined
+                ? previous
+                : result.watched
+            );
+          }
         }
 
         return { name, ...result };
       })
     );
+
+    for (const name of this.#watched.keys()) {
+      if (!Object.hasOwn(config.collections, name)) {
+        this.#watched.delete(name);
+      }
+    }
 
     // Every build, not cached: a change in one collection can break or fix references in another.
     const references = checkReferences(loaded, config.references ?? {});

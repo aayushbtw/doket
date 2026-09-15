@@ -277,8 +277,11 @@ const generated = defineConfig({
   collections: {
     pages: {
       loader: {
-        load: () => ({ entries: [{ metadata: { title: "A" }, slug: "a" }] }),
-        watch: "data/*.json",
+        load: ({ watch }) => {
+          watch("data/*.json");
+
+          return { entries: [{ metadata: { title: "A" }, slug: "a" }] };
+        },
       },
       schema: z.object({ title: z.string() }),
       transform: ({ file, metadata }) => ({

@@ -301,16 +301,27 @@ describe("directory", () => {
     ]);
   });
 
-  it("watches its include patterns and leaves its exclude patterns out", () => {
-    expect(
-      directory("content/posts", {
-        exclude: "drafts/**",
-        include: ["*.md", "**/*.mdx"],
-      }).watch
-    ).toStrictEqual([
-      "content/posts/*.md",
-      "content/posts/**/*.mdx",
-      "!content/posts/drafts/**",
+  it("watches its patterns, even before its directory exists", async () => {
+    const watched: unknown[] = [];
+
+    await directory("content/posts", {
+      exclude: "drafts/**",
+      include: ["*.md", "**/*.mdx"],
+    }).load({
+      collection: "posts",
+      dev: true,
+      root: import.meta.dirname,
+      watch: (patterns) => {
+        watched.push(patterns);
+      },
+    });
+
+    expect(watched).toStrictEqual([
+      [
+        "content/posts/*.md",
+        "content/posts/**/*.mdx",
+        "!content/posts/drafts/**",
+      ],
     ]);
   });
 });

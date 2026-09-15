@@ -68,7 +68,13 @@ function directory(
   const excludes = [exclude].flat();
 
   return {
-    async load({ collection, root }) {
+    async load({ collection, root, watch }) {
+      // Before any early return, so creating a missing folder still reruns `load`.
+      watch([
+        ...includes.map((pattern) => path.posix.join(folder, pattern)),
+        ...excludes.map((pattern) => `!${path.posix.join(folder, pattern)}`),
+      ]);
+
       const absolute = path.resolve(root, folder);
       const empty = `collections.get(${JSON.stringify(collection)}) is empty`;
 
@@ -144,10 +150,6 @@ function directory(
             : [],
       };
     },
-    watch: [
-      ...includes.map((pattern) => path.posix.join(folder, pattern)),
-      ...excludes.map((pattern) => `!${path.posix.join(folder, pattern)}`),
-    ],
   };
 }
 
