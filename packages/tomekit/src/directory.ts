@@ -38,6 +38,13 @@ async function isDirectory(directory: string): Promise<boolean> {
   return stats?.isDirectory() ?? false;
 }
 
+// `stat` follows symlinks, so a linked file still loads. A path it can't stat counts as a file, so reading it reports why.
+async function isFile(file: string): Promise<boolean> {
+  const stats = await stat(file).catch(() => null);
+
+  return stats?.isFile() ?? true;
+}
+
 /**
  * Loads each Markdown file in a directory as an entry: its frontmatter is the
  * metadata and the rest is the body. The slug is the frontmatter's `slug`, or
@@ -74,16 +81,23 @@ function directory(
         };
       }
 
-      const files: string[] = [];
+      const matches: string[] = [];
 
-      for await (const file of glob(includes, {
+      for await (const match of glob(includes, {
         cwd: absolute,
         exclude: excludes,
       })) {
-        files.push(file);
+        matches.push(match);
       }
 
-      files.sort();
+      // Globs match folders too, eg `archive.md/`.
+      const checked = await Promise.all(
+        matches.map(async (match) =>
+          (await isFile(path.join(absolute, match))) ? [match] : []
+        )
+      );
+
+      const files = checked.flat().toSorted();
 
       const results = await Promise.all(
         files.map(async (file) => {

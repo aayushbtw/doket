@@ -1,3 +1,6 @@
+import { chmod, symlink } from "node:fs/promises";
+import path from "node:path";
+
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 
@@ -155,6 +158,54 @@ describe("directory", () => {
       { metadata: { title: "A" } },
       { metadata: { title: "B" } },
     ]);
+  });
+
+  it("loads only files, not folders whose names match", async () => {
+    const root = await project({
+      "content/posts/archive.md/notes.txt": "text",
+      "content/posts/hello.md": "---\ntitle: Hello\n---\n",
+    });
+
+    const { documents, errors } = await loadCollection("posts", posts, root);
+
+    expect(messages(errors)).toStrictEqual([]);
+    expect(documents.map((document) => document.slug)).toStrictEqual(["hello"]);
+  });
+
+  it("loads a symlinked file", async () => {
+    const root = await project({
+      "content/posts/hello.md": "---\ntitle: Hello\n---\n",
+      "shared/linked.md": "---\ntitle: Linked\n---\n",
+    });
+
+    await symlink(
+      path.join(root, "shared/linked.md"),
+      path.join(root, "content/posts/linked.md")
+    );
+
+    const { documents } = await loadCollection("posts", posts, root);
+
+    expect(documents.map((document) => document.slug)).toStrictEqual([
+      "hello",
+      "linked",
+    ]);
+  });
+
+  it("reports a file it cannot read, and keeps the rest", async () => {
+    const root = await project({
+      "content/posts/locked.md": "---\ntitle: Locked\n---\n",
+      "content/posts/open.md": "---\ntitle: Open\n---\n",
+    });
+
+    await chmod(path.join(root, "content/posts/locked.md"), 0o000);
+
+    const { documents, errors } = await loadCollection("posts", posts, root);
+
+    expect(documents.map((document) => document.slug)).toStrictEqual(["open"]);
+    expect(messages(errors)).toStrictEqual([
+      expect.stringMatching(/^content\/posts\/locked\.md: EACCES: /u),
+    ]);
+    expect(errors[0]?.cause).toBeInstanceOf(Error);
   });
 
   it("reports every broken file with its line and column, and keeps the rest", async () => {
