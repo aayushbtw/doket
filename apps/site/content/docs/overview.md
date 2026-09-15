@@ -15,8 +15,8 @@ content/
     hello-world.md     ← a document
 ```
 
-- **Collection**: a folder of files that share one schema, eg `posts`
-- **Document**: one file, parsed and validated, eg `hello-world`
+- **Collection**: documents that share one schema, eg `posts`, from a folder of files or any loader
+- **Document**: one file or loaded entry, parsed and validated, eg `hello-world`
 
 ## Support
 
