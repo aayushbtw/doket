@@ -81,3 +81,42 @@ export const authors = defineLoader({
 To combine sources in one collection, call another loader's `load` inside yours and add your entries to its result.
 
 ## Schema
+
+## References
+
+`references` names the metadata fields that hold slugs of another collection. It sits next to `collections`, keyed by collection name and then by key path.
+
+```ts
+export default defineConfig({
+  collections: {
+    authors: {
+      loader: directory("content/authors"),
+      schema: z.object({ name: z.string() }),
+    },
+    posts: {
+      loader: directory("content/posts"),
+      schema: z.object({
+        author: z.string(),
+        sections: z.array(z.object({ author: z.string(), title: z.string() })),
+      }),
+    },
+  },
+  references: {
+    posts: { author: "authors", "sections.author": "authors" },
+  },
+});
+```
+
+- A path goes through nested objects and arrays, eg `sections.author`. TypeScript accepts only paths to strings or arrays of strings, and names from `collections`.
+- Every slug must belong to a document that `collections.get("authors")` returns, so a skipped or broken author doesn't count. Otherwise `vite build` fails, pointing at the file and line. Dev leaves the post out and shows the error in the overlay.
+- The check runs on documents after `transform`, and only on strings, so a transform can replace a slug with something else.
+
+In the generated types the field holds that collection's slugs, so following it needs no `undefined` check:
+
+```ts
+const post = collections.get("posts").get("hello");
+
+collections.get("authors").get(post.metadata.author).metadata.name;
+```
+
+Inside `transform`, `metadata.author` is still a `string`: the check runs after every transform, since a transform's `skip()` decides which slugs exist.
