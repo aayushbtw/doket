@@ -3,8 +3,8 @@ import path from "node:path";
 
 import { runnerImport } from "vite";
 
-import { inCollection, loadCollection } from "./collection";
-import type { FileCache } from "./collection";
+import { loadCollection } from "./collection";
+import type { CollectionResult, EntryCache } from "./collection";
 import { configIssues } from "./config";
 import {
   ConfigLoadError,
@@ -29,7 +29,7 @@ interface Build {
   warnings: string[];
 }
 
-interface LoaderOptions {
+interface BuilderOptions {
   /** Absolute path of the config file. */
   configPath: string;
   root: string;
@@ -39,7 +39,27 @@ interface LoaderOptions {
   types: string | false;
 }
 
-type Change = "config" | "content";
+const GLOB_CHARACTER = /[*?[{]/u;
+
+/** The part of a glob pattern before its first wildcard, eg `content/posts` for `content/posts/**\/*.md`. */
+function globBase(pattern: string): string {
+  const segments = pattern.split("/");
+
+  const wildcard = segments.findIndex((segment) =>
+    GLOB_CHARACTER.test(segment)
+  );
+
+  return (wildcard === -1 ? segments : segments.slice(0, wildcard)).join("/");
+}
+
+function watchPatterns(root: string, config: Config | undefined) {
+  return Object.entries(config?.collections ?? {}).flatMap(
+    ([name, collection]) =>
+      [collection.loader.watch ?? []]
+        .flat()
+        .map((pattern) => ({ name, pattern: path.resolve(root, pattern) }))
+  );
+}
 
 function isConfig(value: unknown): value is Config {
   return (
@@ -50,38 +70,43 @@ function isConfig(value: unknown): value is Config {
 }
 
 /**
- * Owns everything that outlives one build: the imported config, per-file
- * caches, and the build in progress. Knows nothing about how errors are shown.
+ * Owns everything that outlives one build: the imported config, each
+ * collection's last result and entry cache, and the build in progress. Knows
+ * nothing about how errors are shown.
  */
-class ContentLoader {
-  readonly #options: LoaderOptions;
+class ContentBuilder {
+  readonly #options: BuilderOptions;
   #config: Promise<Config> | undefined;
   /** The last config that loaded, to match changed files while a new one loads. */
   #current: Config | undefined;
   // Kept after a failed import, so fixing a dependency of the config still reloads.
   #dependencies: string[] = [];
-  readonly #caches = new Map<string, FileCache>();
+  readonly #caches = new Map<string, EntryCache>();
+  /** Each collection's last result, reused until one of its `watch` files or the config changes. */
+  readonly #results = new Map<string, CollectionResult>();
+  /** Bumped on every change, so a build that started before it doesn't keep stale results. */
+  #version = 0;
   #build: Promise<Build> | undefined;
   #checkedTsconfig = false;
 
-  constructor(options: LoaderOptions) {
+  constructor(options: BuilderOptions) {
     this.#options = options;
   }
 
-  /** Files whose changes `affected` looks for, for `vite build --watch`. */
+  /** Files and folders whose changes `changed` looks for, for the dev watcher and `vite build --watch`. */
   get watchFiles(): string[] {
     const { configPath, root } = this.#options;
 
-    const directories = Object.values(this.#current?.collections ?? {}).map(
-      (collection) => path.resolve(root, collection.directory)
+    const bases = watchPatterns(root, this.#current).map(({ pattern }) =>
+      globBase(pattern)
     );
 
-    return [configPath, ...this.#dependencies, ...directories];
+    return [...new Set([configPath, ...this.#dependencies, ...bases])];
   }
 
   /**
-   * The current build, shared by every caller until `invalidate`. A build
-   * that rejects, eg on a broken config, is retried by the next call.
+   * The current build, shared by every caller until a change. A build that
+   * rejects, eg on a broken config, is retried by the next call.
    */
   async load(): Promise<Build> {
     this.#build ??= this.#run();
@@ -98,39 +123,36 @@ class ContentLoader {
     }
   }
 
-  /** What a changed file invalidates, if anything. */
-  affected(file: string): Change | undefined {
+  /**
+   * Drops what a changed file invalidates: everything for the config or its
+   * dependencies, otherwise the collections that watch it. Returns whether
+   * anything was dropped.
+   */
+  changed(file: string): boolean {
     const { configPath, root } = this.#options;
 
     if (file === configPath || this.#dependencies.includes(file)) {
-      return "config";
-    }
-
-    const matches = Object.values(this.#current?.collections ?? {}).some(
-      (collection) => {
-        const relative = path.relative(
-          path.resolve(root, collection.directory),
-          file
-        );
-
-        return (
-          !relative.startsWith("..") &&
-          !path.isAbsolute(relative) &&
-          inCollection(collection, relative)
-        );
-      }
-    );
-
-    return matches ? "content" : undefined;
-  }
-
-  invalidate(change: Change): void {
-    if (change === "config") {
       this.#config = undefined;
       this.#caches.clear();
+      this.#results.clear();
+    } else {
+      const names = watchPatterns(root, this.#current)
+        .filter(({ pattern }) => path.matchesGlob(file, pattern))
+        .map(({ name }) => name);
+
+      if (names.length === 0) {
+        return false;
+      }
+
+      for (const name of names) {
+        this.#results.delete(name);
+      }
     }
 
+    this.#version += 1;
     this.#build = undefined;
+
+    return true;
   }
 
   async #importConfig(): Promise<Config> {
@@ -183,11 +205,20 @@ class ContentLoader {
       throw new InvalidConfigError(path.relative(root, configPath), issues);
     }
 
+    const version = this.#version;
+
     const loaded = await Promise.all(
       Object.entries(config.collections).map(async ([name, collection]) => {
         const cache = this.#caches.get(name) ?? new Map();
         this.#caches.set(name, cache);
-        const result = await loadCollection(name, collection, root, { cache });
+
+        const result =
+          this.#results.get(name) ??
+          (await loadCollection(name, collection, root, { cache }));
+
+        if (this.#version === version) {
+          this.#results.set(name, result);
+        }
 
         return { name, ...result };
       })
@@ -260,4 +291,4 @@ export const collections = createCollections({${byName.join(",")}});
   }
 }
 
-export { type Build, type Change, ContentLoader, MODULE_ID };
+export { type Build, ContentBuilder, MODULE_ID };

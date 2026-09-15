@@ -18,20 +18,20 @@ afterEach(async () => {
 // Imports the source, since "tomekit" would resolve to dist, which may not be built yet.
 const config = `
 import { z } from "zod";
-import { defineCollection, defineConfig } from ${JSON.stringify(SOURCE.replace(/\.ts$/u, ""))};
+import { defineCollection, defineConfig, directory } from ${JSON.stringify(SOURCE.replace(/\.ts$/u, ""))};
 
 export default defineConfig({
   collections: {
     collection: defineCollection({
-      directory: "content/pages",
+      loader: directory("content/pages"),
       schema: z.object({ order: z.number() }),
     }),
     index: defineCollection({
-      directory: "content/pages",
+      loader: directory("content/pages"),
       schema: z.object({ order: z.number() }),
     }),
     posts: defineCollection({
-      directory: "content/posts",
+      loader: directory("content/posts"),
       schema: z.object({ title: z.string() }),
     }),
   },
@@ -52,7 +52,8 @@ const tsconfig = JSON.stringify({
     skipLibCheck: true,
     strict: true,
     target: "ES2023",
-    types: [],
+    // The source imports `node:` modules; the published `.d.mts` does not.
+    types: ["node"],
   },
   include: ["*.ts", ".tomekit/**/*.ts"],
 });
@@ -96,6 +97,7 @@ const posts = collections.get("posts");
 const post: DocumentOf<"posts"> = posts.get("hello");
 const title: string = post.metadata.title;
 const body: string = post.body;
+const file: string = post.file.path;
 const slug: SlugOf<"posts"> = post.slug;
 const fromRoute: string = "anything";
 const maybe: DocumentOf<"posts"> | undefined = posts.get(fromRoute);
@@ -107,7 +109,7 @@ const narrowed: readonly DocumentOf[] = collections.has(fromRoute) ? collections
 const names: readonly CollectionName[] = collections.names();
 const everything: readonly DocumentOf[] = collections.names().flatMap((name) => collections.get(name).documents());
 
-export { body, checked, dynamic, everything, maybe, names, narrowed, order, slug, slugs, title };
+export { body, checked, dynamic, everything, file, maybe, names, narrowed, order, slug, slugs, title };
 `);
 
     expect(output).toBe("");

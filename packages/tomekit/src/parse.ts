@@ -4,36 +4,50 @@ import { isMap, isNode, isScalar, isSeq, parseDocument } from "yaml";
 import type { Document as YamlDocument } from "yaml";
 
 import type { Issue } from "./errors";
-import type { Source, StandardSchema } from "./index";
+import type { Entry, FileInfo } from "./index";
 import { assertContentValue, isPlainObject } from "./value";
 
 const FRONTMATTER = /^---\r?\n(?:(?<data>[\s\S]*?)\r?\n)?---(?:\r?\n|$)/u;
 
 const EXTENSION = /\.[^./]+$/u;
 
+/** Where a key is written in a file. `line` and `column` start at 1. */
+interface Position {
+  column: number;
+  line: number;
+}
+
+/** Where a key of an entry's metadata is written, as deep as the key path exists. */
+type Locate = (keys: readonly string[]) => Position | undefined;
+
+// A symbol key keeps the locator off the public `Entry` and out of the entry's hash. From the registry,
+// because the config imports `directory()` through Vite's module runner, a different copy of this module.
+const LOCATE = Symbol.for("tomekit.locate");
+
+interface LocatedEntry extends Entry<FileInfo> {
+  readonly [LOCATE]: Locate;
+}
+
+function isLocated(entry: Entry): entry is LocatedEntry {
+  return LOCATE in entry;
+}
+
 interface ParseInput {
   /** Relative to the collection directory, eg `guides/setup.md`. */
   file: string;
   /** Relative to the project root. */
   filePath: string;
-  schema: StandardSchema;
   /** The file's full text, frontmatter included. */
   text: string;
 }
 
-/** Where an issue is in the file. Empty when there is no frontmatter to point into. */
-interface IssueLocation extends Omit<Issue, "message"> {}
+/** The file's entry, unless its YAML does not parse, and what is wrong with it. An entry with issues is still validated, so every problem shows, but left out. */
+interface ParseResult {
+  entry: LocatedEntry | undefined;
+  issues: Issue[];
+}
 
-type ParseResult =
-  | {
-      issues?: undefined;
-      /** Where the frontmatter sets `slug`, or `undefined` when the slug is the file path. */
-      slugLocation: IssueLocation | undefined;
-      source: Source<object>;
-    }
-  | { issues: Issue[] };
-
-function position(text: string, offset: number) {
+function position(text: string, offset: number): Position {
   const before = text.slice(0, offset);
 
   return {
@@ -42,17 +56,11 @@ function position(text: string, offset: number) {
   };
 }
 
-function isKeyedSegment(
-  segment: PropertyKey | { readonly key: PropertyKey }
-): segment is { readonly key: PropertyKey } {
-  return new Object(segment) === segment;
-}
-
 function isSlug(value: unknown): value is string {
   return new Object(value) instanceof String && value !== "";
 }
 
-/** The offset of the key or item a schema issue points at, as deep as the frontmatter goes. */
+/** The offset of the key or item at `keys`, as deep as the frontmatter goes. */
 function offsetOf(
   yaml: YamlDocument,
   keys: readonly string[]
@@ -88,13 +96,8 @@ function offsetOf(
   return offset;
 }
 
-/** Validates a file's frontmatter and builds its source. Reads nothing from disk. */
-async function parse({
-  file,
-  filePath,
-  schema,
-  text,
-}: ParseInput): Promise<ParseResult> {
+/** Splits a Markdown file into an entry: frontmatter as metadata, the rest as body. Reads nothing from disk. */
+function parse({ file, filePath, text }: ParseInput): ParseResult {
   const match = FRONTMATTER.exec(text);
   const frontmatter = match?.groups?.data;
 
@@ -104,89 +107,54 @@ async function parse({
       : parseDocument(frontmatter, { prettyErrors: false });
 
   /** Where an offset into the YAML is. With no offset it is the opening `---`. */
-  function locationAt(offset: number | undefined): IssueLocation {
-    if (match === null) {
-      return {};
-    }
-
+  function positionAt(offset: number | undefined): Position {
     if (offset === undefined) {
       return { column: 1, line: 1 };
     }
 
-    const start = match[0].indexOf("\n") + 1;
+    const start = (match?.[0].indexOf("\n") ?? -1) + 1;
 
     return position(text, start + offset);
   }
 
-  function locationOf(keys: readonly string[]): IssueLocation {
-    return yaml === undefined ? {} : locationAt(offsetOf(yaml, keys));
-  }
-
   if (yaml !== undefined && yaml.errors.length > 0) {
     return {
+      entry: undefined,
       issues: yaml.errors.map((error) => ({
-        ...locationAt(error.pos[0]),
+        ...positionAt(error.pos[0]),
         message: error.message,
       })),
     };
   }
 
-  const data: unknown = yaml?.toJS() ?? {};
-  assertContentValue(data);
-  // Read before the schema, which may strip keys it does not declare.
-  const slug = isPlainObject(data) && "slug" in data ? data.slug : undefined;
+  const metadata: unknown = yaml?.toJS() ?? {};
+  assertContentValue(metadata);
 
-  const slugIssues =
+  const slug =
+    isPlainObject(metadata) && "slug" in metadata ? metadata.slug : undefined;
+
+  function locate(keys: readonly string[]): Position | undefined {
+    return yaml === undefined ? undefined : positionAt(offsetOf(yaml, keys));
+  }
+
+  const issues =
     slug === undefined || isSlug(slug)
       ? []
       : [
           {
-            ...locationOf(["slug"]),
+            ...locate(["slug"]),
             message:
               'slug: must be a non-empty string, eg "hello-world". Remove it to use the file path instead',
           },
         ];
 
-  const result = await schema["~standard"].validate(data);
-
-  if (result.issues) {
-    return {
-      issues: [
-        ...slugIssues,
-        ...result.issues.map((issue) => {
-          const keys = (issue.path ?? []).map((segment) =>
-            String(isKeyedSegment(segment) ? segment.key : segment)
-          );
-
-          const key = keys.join(".");
-
-          return {
-            ...locationOf(keys),
-            message: key === "" ? issue.message : `${key}: ${issue.message}`,
-          };
-        }),
-      ],
-    };
-  }
-
-  const { value } = result;
-
-  if (!isPlainObject(value)) {
-    return {
-      issues: [...slugIssues, { message: "the schema must produce an object" }],
-    };
-  }
-
-  if (slugIssues.length > 0) {
-    return { issues: slugIssues };
-  }
-
   return {
-    slugLocation: slug === undefined ? undefined : locationOf(["slug"]),
-    source: {
+    issues,
+    entry: {
       body: match ? text.slice(match[0].length) : text,
       file: { name: path.basename(file), path: filePath },
-      metadata: value,
+      [LOCATE]: locate,
+      metadata: isPlainObject(metadata) ? metadata : {},
       slug: isSlug(slug)
         ? slug
         : file.split(path.sep).join("/").replace(EXTENSION, ""),
@@ -194,4 +162,12 @@ async function parse({
   };
 }
 
-export { type IssueLocation, parse, type ParseResult };
+export {
+  isLocated,
+  type Locate,
+  LOCATE,
+  type LocatedEntry,
+  parse,
+  type ParseResult,
+  type Position,
+};

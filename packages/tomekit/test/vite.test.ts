@@ -12,12 +12,12 @@ import { createProject, SOURCE } from "./project";
 // even though Vite imports it separately.
 const config = `
 import { z } from "zod";
-import { defineCollection, defineConfig } from ${JSON.stringify(SOURCE)};
+import { defineCollection, defineConfig, directory } from ${JSON.stringify(SOURCE)};
 
 export default defineConfig({
   collections: {
     posts: defineCollection({
-      directory: "content/posts",
+      loader: directory("content/posts"),
       schema: z.object({ date: z.coerce.date(), title: z.string() }),
       transform: (source) => {
         globalThis.tomekitRuns = (globalThis.tomekitRuns ?? 0) + 1;
@@ -29,6 +29,37 @@ export default defineConfig({
   },
 });
 `;
+
+// A collection read from a JSON file outside any content folder, the way a loader written in the config would.
+const loaderConfig = `
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+import { defineConfig } from ${JSON.stringify(SOURCE)};
+
+export default defineConfig({
+  collections: {
+    pages: {
+      loader: {
+        load: async ({ root }) => ({
+          entries: JSON.parse(await readFile(path.join(root, "data/pages.json"), "utf-8")),
+        }),
+        watch: "data/*.json",
+      },
+      schema: z.object({ title: z.string() }),
+    },
+  },
+});
+`;
+
+function pages(...titles: (string | undefined)[]) {
+  return JSON.stringify(
+    titles.map((title, index) => ({
+      metadata: title === undefined ? {} : { title },
+      slug: String(index),
+    }))
+  );
+}
 
 interface Post {
   metadata: { date: Date; title: string };
@@ -275,6 +306,54 @@ describe("tomekit()", () => {
 
     first.socket.close();
     second.socket.close();
+  });
+
+  it("reruns a loader when a file it watches changes", async () => {
+    const {
+      change,
+      project,
+      server: dev,
+    } = await start({
+      "data/pages.json": pages("One"),
+      "tomekit.config.ts": loaderConfig,
+    });
+
+    const before = (await loadCollections(dev)).get("pages")?.get("0");
+    expect(before?.metadata.title).toBe("One");
+
+    await project.write({ "data/pages.json": pages("Two") });
+    change("data/pages.json");
+    const after = (await loadCollections(dev)).get("pages")?.get("0");
+
+    expect(after?.metadata.title).toBe("Two");
+  });
+
+  it("points the overlay at the config for an entry without a file", async () => {
+    const {
+      change,
+      project,
+      server: dev,
+    } = await start({
+      "data/pages.json": pages("One"),
+      "tomekit.config.ts": loaderConfig,
+    });
+
+    const sent: HotPayload[] = [];
+    dev.environments.client.hot.send = (payload: HotPayload) => {
+      sent.push(payload);
+    };
+
+    await project.write({ "data/pages.json": pages(undefined) });
+    change("data/pages.json");
+    await loadCollections(dev);
+
+    const overlay = sent.find((payload) => payload.type === "error");
+    expect(overlay?.err.loc?.file).toBe(
+      path.join(project.root, "tomekit.config.ts")
+    );
+    expect(overlay?.err.message).toContain(
+      'collections.get("pages").get("0"): title:'
+    );
   });
 
   it("fails on collection names it cannot generate types for", async () => {

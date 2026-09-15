@@ -4,7 +4,7 @@ export { ConfigError } from "./config-error";
 
 export { ConfigLoadError } from "./config-load-error";
 
-export { ContentError, type Issue } from "./content-error";
+export { ContentError, type ContentSubject, type Issue } from "./content-error";
 
 export { InvalidConfigError } from "./invalid-config-error";
 

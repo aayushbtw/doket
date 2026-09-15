@@ -2,10 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 
 import { configIssues } from "../src/config";
-import { defineCollection } from "../src/index";
+import { defineCollection, directory } from "../src/index";
 
 const collection = defineCollection({
-  directory: "content",
+  loader: directory("content"),
   schema: z.object({}),
 });
 
@@ -31,5 +31,16 @@ describe("configIssues", () => {
           `collection ${JSON.stringify(name)} has an invalid name. Use letters, digits and "_", starting with a letter, eg "blogPosts".`
       )
     );
+  });
+
+  it("names the loader a collection without one needs", () => {
+    const { loader: _loader, ...withoutLoader } = collection;
+
+    expect(
+      // @ts-expect-error a JavaScript config, or one from before loaders, can leave it out
+      configIssues({ collections: { posts: withoutLoader } })
+    ).toStrictEqual([
+      'collection "posts" has no loader. Set one, eg `loader: directory("content/posts")`.',
+    ]);
   });
 });

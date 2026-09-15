@@ -26,7 +26,7 @@ interface Collection<
   TSlug extends string = string,
   TKnownSlug extends TSlug = never,
 > {
-  /** Every document, in file name order. Sort, filter and slice it like any array. */
+  /** Every document, in the order its loader returned them, eg file name order for `directory`. Sort, filter and slice it like any array. */
   documents(this: void): readonly TDocument[];
   /**
    * The document with this slug. A slug that exists returns its document.

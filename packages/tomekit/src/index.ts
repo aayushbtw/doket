@@ -1,3 +1,4 @@
+import type { Glob } from "./directory";
 import type { Prettify } from "./query";
 import type { Skipped } from "./skipped";
 import type { ContentValue } from "./value";
@@ -40,8 +41,8 @@ interface FileInfo {
 }
 
 /**
- * A document before `transform`: its frontmatter as the schema produced it,
- * and the file's text.
+ * A document before `transform`: its metadata as the schema produced it, and
+ * the entry's body.
  *
  * @example
  * ```ts
@@ -54,19 +55,91 @@ interface FileInfo {
  * }
  * ```
  */
-interface Source<TMetadata = unknown> {
-  /** The file's text after the frontmatter block. */
+interface Source<
+  TMetadata = unknown,
+  TFile extends FileInfo | undefined = FileInfo | undefined,
+> {
+  /** The entry's body, eg a file's text after the frontmatter block. */
   body: string;
-  /** Where the file lives, eg `{ name: "setup.md", path: "content/guides/setup.md" }`. */
-  file: FileInfo;
-  /** The frontmatter, as the collection's schema produced it. */
+  /** Where the entry's file lives, or `undefined` when its loader gave none. */
+  file: TFile;
+  /** The entry's metadata, as the collection's schema produced it. */
   metadata: TMetadata;
-  /**
-   * The frontmatter's `slug`, whether or not the schema declares it, otherwise
-   * the path inside the collection directory without the extension, eg
-   * `guides/setup`. A `slug` that is not a non-empty string fails the file.
-   */
+  /** The document's key in its collection, eg `guides/setup`. */
   slug: string;
+}
+
+/** One document as a loader returns it, before the schema and `transform`. */
+interface Entry<TFile extends FileInfo | undefined = FileInfo | undefined> {
+  /**
+   * Becomes the document's `body`, eg a file's text after the frontmatter.
+   *
+   * @default ""
+   */
+  body?: string;
+  /** Where the entry's file lives, when it has one. */
+  file?: TFile;
+  /**
+   * Validated by the collection's schema next.
+   *
+   * @default {}
+   */
+  metadata?: object;
+  /** The document's key in its collection, eg `guides/setup`. A non-empty string, unique in the collection. */
+  slug: string;
+}
+
+/** What a loader's `load` receives. */
+interface LoadContext {
+  /** The name of the collection, eg `posts`. */
+  collection: string;
+  /** The project root, as an absolute path. */
+  root: string;
+}
+
+/** A problem a loader found, eg a file whose frontmatter does not parse. tomekit reports it like a schema error. */
+interface LoadIssue {
+  cause?: unknown;
+  column?: number;
+  /** Relative to the project root. */
+  file?: string;
+  line?: number;
+  message: string;
+  slug?: string;
+}
+
+/** What `load` returns. */
+interface LoadResult<
+  TFile extends FileInfo | undefined = FileInfo | undefined,
+> {
+  /** In the order `documents()` returns them. */
+  entries: readonly Entry<TFile>[];
+  /** Entries that could not be loaded. The rest still load. */
+  issues?: readonly LoadIssue[];
+  /** Printed as they are. Say what happens because of them, eg `directory "x" does not exist, so collections.get("x") is empty`. */
+  warnings?: readonly string[];
+}
+
+/**
+ * Where a collection's entries come from. {@link directory} reads files;
+ * write your own to load entries from code, eg an API.
+ *
+ * @example
+ * ```ts
+ * const loader: Loader = {
+ *   load: async () => ({
+ *     entries: (await fetchPages()).map((page) => ({ body: page.markdown, metadata: { title: page.title }, slug: page.id })),
+ *   }),
+ * };
+ * ```
+ */
+interface Loader<TFile extends FileInfo | undefined = FileInfo | undefined> {
+  /** Runs on every build, and in dev again when the config or a `watch` file changes. Throwing fails the whole collection. */
+  load: (
+    context: LoadContext
+  ) => LoadResult<TFile> | PromiseLike<LoadResult<TFile>>;
+  /** Glob patterns, relative to the project root, of files whose changes rerun `load` in dev, eg `"data/*.json"`. */
+  watch?: Glob | readonly Glob[];
 }
 
 /** The second argument to `transform`. */
@@ -97,29 +170,15 @@ interface TransformResult {
 
 type TransformOutput = Skipped | TransformResult;
 
-/**
- * A glob pattern. Suggests common ones and accepts any string.
- *
- * @internal
- */
-type Glob = "**/*.md" | "**/*.mdx" | "*.md" | (string & Record<never, never>);
-
-/** One collection: where its files are, how to validate them and what to return. */
+/** One collection: where its entries come from, how to validate them and what to return. */
 interface CollectionConfig<
   TSchema extends StandardSchema<object> = StandardSchema<object>,
   TOutput = unknown,
+  TFile extends FileInfo | undefined = FileInfo | undefined,
 > {
-  /** Where the files live, relative to the project root, eg `content/posts`. */
-  directory: string;
-  /** Glob patterns, relative to `directory`, of files to leave out, eg `"drafts/**"`. */
-  exclude?: Glob | readonly Glob[];
-  /**
-   * Glob patterns, relative to `directory`, of files to load.
-   *
-   * @default "**\/*.md"
-   */
-  include?: Glob | readonly Glob[];
-  /** Validates each file's frontmatter, and must produce an object. A file without frontmatter is validated as `{}`. */
+  /** Where the entries come from, eg `directory("content/posts")`. */
+  loader: Loader<TFile>;
+  /** Validates each entry's metadata, and must produce an object. A file without frontmatter is validated as `{}`. */
   schema: TSchema;
   /**
    * Changes each document at build time. Return a new `metadata` and/or
@@ -135,10 +194,11 @@ interface CollectionConfig<
    * ```
    */
   // `PromiseLike`, not `Promise`: it still allows async transforms, and only adds `then` to the editor's suggestions for the returned object.
-  transform?: (
-    source: Source<InferOutput<TSchema>>,
+  // A method, not a function property: methods are checked bivariantly, so a config with files still fits `CollectionConfig`.
+  transform?(
+    source: Source<InferOutput<TSchema>, TFile>,
     context: TransformContext
-  ) => TOutput | PromiseLike<TOutput>;
+  ): TOutput | PromiseLike<TOutput>;
 }
 
 /** A tomekit config, as returned by {@link defineConfig}. */
@@ -175,10 +235,10 @@ type IsUntransformed<TOutput> = unknown extends TOutput
     : false;
 
 // Distributes, so a transform that returns different shapes gives a union of documents.
-type DocumentFrom<TMetadata, TResult> = TResult extends unknown
+type DocumentFrom<TMetadata, TResult, TFile> = TResult extends unknown
   ? {
       body: TResult extends { body: infer TBody } ? TBody : string;
-      file: FileInfo;
+      file: TFile;
       metadata: TResult extends { metadata: infer TNewMetadata }
         ? PrettifyIfPlainObject<TNewMetadata>
         : TMetadata;
@@ -193,12 +253,17 @@ type DocumentFrom<TMetadata, TResult> = TResult extends unknown
  * @internal
  */
 type InferDocument<TCollection> =
-  TCollection extends CollectionConfig<infer TSchema, infer TOutput>
+  TCollection extends CollectionConfig<
+    infer TSchema,
+    infer TOutput,
+    infer TFile
+  >
     ? DocumentFrom<
         InferOutput<TSchema>,
         IsUntransformed<TOutput> extends true
           ? Record<never, never>
-          : Exclude<Awaited<TOutput>, Skipped>
+          : Exclude<Awaited<TOutput>, Skipped>,
+        TFile
       >
     : never;
 
@@ -221,7 +286,7 @@ type WithSlug<TDocument, TSlug extends string> = TDocument extends {
  * @example
  * ```ts
  * export const posts = defineCollection({
- *   directory: "content/posts",
+ *   loader: directory("content/posts"),
  *   schema: z.object({ title: z.string() }),
  * });
  *
@@ -231,19 +296,27 @@ type WithSlug<TDocument, TSlug extends string> = TDocument extends {
 function defineCollection<
   TSchema extends StandardSchema<object>,
   TOutput extends TransformOutput = TransformOutput,
+  TFile extends FileInfo | undefined = FileInfo | undefined,
 >(
-  collection: CollectionConfig<TSchema, TOutput>
-): CollectionConfig<TSchema, TOutput> {
+  collection: CollectionConfig<TSchema, TOutput, TFile>
+): CollectionConfig<TSchema, TOutput, TFile> {
   return collection;
 }
+
+// A file type inferred from a loader, or `FileInfo | undefined` when nothing could be inferred, eg from an inline `load`.
+type FileOf<TFile> = unknown extends TFile
+  ? FileInfo | undefined
+  : Extract<TFile, FileInfo | undefined>;
 
 type InferredCollections<
   TSchemas extends Record<string, StandardSchema>,
   TOutputs extends { [TName in keyof TSchemas]: unknown },
+  TFiles extends { [TName in keyof TSchemas]: unknown },
 > = {
   [TName in keyof TSchemas]: CollectionConfig<
     Extract<TSchemas[TName], StandardSchema<object>>,
-    Awaited<TOutputs[TName]>
+    Awaited<TOutputs[TName]>,
+    FileOf<TFiles[TName]>
   >;
 };
 
@@ -256,7 +329,7 @@ type InferredCollections<
  * export default defineConfig({
  *   collections: {
  *     posts: {
- *       directory: "content/posts",
+ *       loader: directory("content/posts"),
  *       schema: z.object({ title: z.string(), date: z.coerce.date() }),
  *     },
  *   },
@@ -271,25 +344,31 @@ function defineConfig<
   TSchemas extends Record<string, StandardSchema>,
   // Unconstrained: a constraint here makes inference fall back to it and lose each transform's output type.
   TOutputs extends { [TName in keyof TSchemas]: unknown },
+  TFiles extends { [TName in keyof TSchemas]: unknown },
 >(config: {
   collections: {
-    [TName in keyof TSchemas]: Omit<
-      CollectionConfig,
-      "schema" | "transform"
-    > & {
-      /** Validates each file's frontmatter, and must produce an object. A file without frontmatter is validated as `{}`. */
+    [TName in keyof TSchemas]: {
+      /** Validates each entry's metadata, and must produce an object. A file without frontmatter is validated as `{}`. */
       schema: TSchemas[TName] & StandardSchema<object>;
+    };
+  } & {
+    [TName in keyof TFiles]: {
+      /** Where the entries come from, eg `directory("content/posts")`. */
+      loader: Loader<FileOf<TFiles[TName]>>;
     };
   } & {
     [TName in keyof TOutputs]: {
       /** Changes each document at build time. Return a new `metadata` and/or `body`, and their types become the document's. */
       transform?: (
-        source: Source<InferOutput<TSchemas[TName & keyof TSchemas]>>,
+        source: Source<
+          InferOutput<TSchemas[TName & keyof TSchemas]>,
+          FileOf<TFiles[TName & keyof TFiles]>
+        >,
         context: TransformContext<TName & string>
       ) => TOutputs[TName];
     };
   };
-}): Config<InferredCollections<TSchemas, TOutputs>>;
+}): Config<InferredCollections<TSchemas, TOutputs, TFiles>>;
 // Loose on purpose: the parameter's `schema` intersection never matches the inferred return type.
 function defineConfig(config: Config): Config {
   return config;
@@ -300,8 +379,13 @@ export {
   type Config,
   defineCollection,
   defineConfig,
+  type Entry,
   type FileInfo,
   type InferDocument,
+  type LoadContext,
+  type Loader,
+  type LoadIssue,
+  type LoadResult,
   type Skipped,
   type Source,
   type StandardSchema,
@@ -309,6 +393,8 @@ export {
   type TransformResult,
   type WithSlug,
 };
+
+export { directory, type DirectoryOptions } from "./directory";
 
 export type { Collection } from "./query";
 

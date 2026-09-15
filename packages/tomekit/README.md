@@ -18,8 +18,8 @@ content/
     hello-world.md     ← a document
 ```
 
-- **Collection**: a folder of files that share one schema, eg `posts`
-- **Document**: one file, parsed and validated, eg `hello-world`
+- **Collection**: documents that share one schema, eg `posts`, from a folder of files or any loader
+- **Document**: one file or loaded entry, parsed and validated, eg `hello-world`
 
 ## Quick start
 
@@ -30,13 +30,13 @@ pnpm add tomekit
 **1. Define a collection** in `tomekit.config.ts`:
 
 ```ts
-import { defineConfig } from "tomekit";
+import { defineConfig, directory } from "tomekit";
 import { z } from "zod";
 
 export default defineConfig({
   collections: {
     posts: {
-      directory: "content/posts",
+      loader: directory("content/posts"),
       schema: z.object({ title: z.string() }),
     },
   },

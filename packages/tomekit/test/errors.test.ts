@@ -24,7 +24,7 @@ describe("errors", () => {
       [new ConfigLoadError("tomekit.config.ts", new Error("x")), ConfigError],
       [new MissingDefaultExportError("tomekit.config.ts"), ConfigError],
       [new InvalidConfigError("tomekit.config.ts", ["a"]), ConfigError],
-      [new ContentError("a.md", { message: "x" }), TomekitError],
+      [new ContentError({ file: "a.md" }, { message: "x" }), TomekitError],
       [new BrokenContentError([]), TomekitError],
       [new UnserializableValueError("a function", "a"), TransformError],
       [new UnserializableInstanceError("Author", "a"), TransformError],
@@ -62,23 +62,44 @@ describe("errors", () => {
 
   it("prints a content error with as much location as it has", () => {
     expect(
-      new ContentError("a.md", { column: 5, line: 4, message: "tags.1: bad" })
-        .message
+      new ContentError(
+        { file: "a.md" },
+        { column: 5, line: 4, message: "tags.1: bad" }
+      ).message
     ).toBe("a.md:4:5: tags.1: bad");
-    expect(new ContentError("a.md", { message: "bad" }).message).toBe(
+    expect(new ContentError({ file: "a.md" }, { message: "bad" }).message).toBe(
       "a.md: bad"
     );
   });
 
+  it("names the collection and slug of an entry without a file", () => {
+    expect(
+      new ContentError({ collection: "pages", slug: "a" }, { message: "bad" })
+        .message
+    ).toBe('collections.get("pages").get("a"): bad');
+    expect(
+      new ContentError({ collection: "pages" }, { message: "bad" }).message
+    ).toBe('collections.get("pages"): bad');
+  });
+
   it("counts files, not errors, in a broken build", () => {
     const error = new BrokenContentError([
-      new ContentError("a.md", { line: 2, message: "title: bad" }),
-      new ContentError("a.md", { line: 3, message: "date: bad" }),
+      new ContentError({ file: "a.md" }, { line: 2, message: "title: bad" }),
+      new ContentError({ file: "a.md" }, { line: 3, message: "date: bad" }),
     ]);
 
     expect(error.message).toBe(
       "1 content file has errors:\na.md:2: title: bad\na.md:3: date: bad"
     );
     expect(error.errors).toHaveLength(2);
+  });
+
+  it("counts entries when some have no file", () => {
+    const error = new BrokenContentError([
+      new ContentError({ file: "a.md" }, { message: "bad" }),
+      new ContentError({ collection: "pages", slug: "a" }, { message: "bad" }),
+    ]);
+
+    expect(error.message).toMatch(/^2 entries have errors:\n/u);
   });
 });

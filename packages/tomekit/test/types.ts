@@ -1,9 +1,10 @@
 // Checked by `vp check`, never run: each line fails to compile if inference breaks.
 import { z } from "zod";
 
-import { defineCollection, defineConfig } from "../src/index";
+import { defineCollection, defineConfig, directory } from "../src/index";
 import type {
   Collection,
+  FileInfo,
   InferDocument,
   Source,
   TransformContext,
@@ -17,12 +18,11 @@ declare function read<TCollection>(
 const config = defineConfig({
   collections: {
     notes: defineCollection({
-      directory: "content/notes",
+      loader: directory("content/notes"),
       schema: z.object({ order: z.number() }),
     }),
     posts: defineCollection({
-      directory: "content/posts",
-      include: "*.md",
+      loader: directory("content/posts", { include: "*.md" }),
       schema: z.object({
         date: z.coerce.date(),
         tags: z.array(z.string()),
@@ -129,7 +129,7 @@ function withUrl<TMetadata extends object>(
 const inline = defineConfig({
   collections: {
     drafts: {
-      directory: "content/drafts",
+      loader: directory("content/drafts"),
       schema: z.object({ title: z.string() }),
       transform: async ({ metadata }, { skip }) => {
         await Promise.resolve();
@@ -140,7 +140,7 @@ const inline = defineConfig({
       },
     },
     named: {
-      directory: "content/named",
+      loader: directory("content/named"),
       schema: z.object({ order: z.number() }),
       transform: (_source, { collection }) => {
         const name: "named" = collection;
@@ -149,20 +149,20 @@ const inline = defineConfig({
       },
     },
     notes: defineCollection({
-      directory: "content/notes",
+      loader: directory("content/notes"),
       schema: z.object({ order: z.number() }),
     }),
     pages: {
-      directory: "content/pages",
+      loader: directory("content/pages"),
       schema: z.object({ order: z.number() }),
     },
     rendered: {
-      directory: "content/rendered",
+      loader: directory("content/rendered"),
       schema: z.object({ order: z.number() }),
       transform: ({ body: text }) => ({ body: text.length }),
     },
     shared: {
-      directory: "content/shared",
+      loader: directory("content/shared"),
       schema: z.object({ order: z.number() }),
       transform: withUrl,
     },
@@ -195,7 +195,7 @@ export const sharedUrl: string | undefined = shared?.metadata.url;
 export const sharedOrder: number | undefined = shared?.metadata.order;
 
 export const extraField = defineCollection({
-  directory: "content/extra",
+  loader: directory("content/extra"),
   schema: z.object({}),
   // @ts-expect-error a transform cannot add fields documents do not have
   transform: () => ({ url: "/extra" }),
@@ -205,14 +205,14 @@ export const extraField = defineCollection({
 const unions = defineConfig({
   collections: {
     media: {
-      directory: "content/media",
+      loader: directory("content/media"),
       schema: z.discriminatedUnion("kind", [
         z.object({ kind: z.literal("video"), url: z.string() }),
         z.object({ kind: z.literal("quote"), text: z.string() }),
       ]),
     },
     shared: {
-      directory: "content/shared",
+      loader: directory("content/shared"),
       schema: z.discriminatedUnion("kind", [
         z.object({ kind: z.literal("video"), url: z.string() }),
         z.object({ kind: z.literal("quote"), text: z.string() }),
@@ -239,7 +239,7 @@ export const sharedSrc: string | undefined =
 
 // A schema must produce an object, since its output becomes the document's metadata.
 export const stringCollection = defineCollection({
-  directory: "content/bad",
+  loader: directory("content/bad"),
   // @ts-expect-error a schema that produces a string is rejected
   schema: z.string(),
 });
@@ -247,7 +247,7 @@ export const stringCollection = defineCollection({
 export const stringConfig = defineConfig({
   collections: {
     bad: {
-      directory: "content/bad",
+      loader: directory("content/bad"),
       // @ts-expect-error a schema that produces a string is rejected
       schema: z.string(),
     },
@@ -256,8 +256,67 @@ export const stringConfig = defineConfig({
 
 // Globs suggest common patterns but accept any string.
 export const globbed = defineCollection({
-  directory: "content/notes",
-  exclude: ["drafts/**"],
-  include: "**/*.markdown",
+  loader: directory("content/notes", {
+    exclude: ["drafts/**"],
+    include: "**/*.markdown",
+  }),
   schema: z.object({}),
 });
+
+// A loader written in the config types documents the same way, without a file.
+const generated = defineConfig({
+  collections: {
+    pages: {
+      loader: {
+        load: () => ({ entries: [{ metadata: { title: "A" }, slug: "a" }] }),
+        watch: "data/*.json",
+      },
+      schema: z.object({ title: z.string() }),
+      transform: ({ file, metadata }) => ({
+        metadata: { title: metadata.title, withFile: file !== undefined },
+      }),
+    },
+    plain: {
+      loader: {
+        load: async () => {
+          await Promise.resolve();
+
+          return { entries: [] };
+        },
+      },
+      schema: z.object({ order: z.number() }),
+    },
+  },
+});
+
+const [generatedPage] = read(generated.collections.pages).documents();
+
+export const generatedTitle: string | undefined = generatedPage?.metadata.title;
+
+export const generatedFile: FileInfo | undefined = generatedPage?.file;
+
+// @ts-expect-error an entry from code may have no file
+export const generatedPath: string = generatedPage?.file.path ?? "";
+
+const [plain] = read(generated.collections.plain).documents();
+
+export const plainOrder: number | undefined = plain?.metadata.order;
+
+export const loaderResult = defineCollection({
+  loader: {
+    // @ts-expect-error `load` returns an object with entries, not an array
+    load: () => [{ slug: "a" }],
+  },
+  schema: z.object({}),
+});
+
+// `defineCollection` with an inline loader types `file` as maybe missing, not `never`.
+const inlineCollection = defineCollection({
+  loader: { load: () => ({ entries: [{ slug: "a" }] }) },
+  schema: z.object({}),
+});
+
+const inlineFile = read(inlineCollection).documents()[0]?.file;
+
+export const inlinePath: string =
+  inlineFile === undefined ? "" : inlineFile.path;

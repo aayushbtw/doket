@@ -2,10 +2,10 @@ import path from "node:path";
 
 import type { ErrorPayload, Logger, Plugin, ViteDevServer } from "vite";
 
+import { ContentBuilder, MODULE_ID } from "./builder";
+import type { Build } from "./builder";
 import { BrokenContentError, PluginNotReadyError } from "./errors";
 import type { ContentError } from "./errors";
-import { ContentLoader, MODULE_ID } from "./loader";
-import type { Build } from "./loader";
 
 const RESOLVED_ID = `\0${MODULE_ID}`;
 
@@ -50,8 +50,8 @@ function tomekit({
   config = "tomekit.config.ts",
   types = ".tomekit",
 }: TomekitOptions = {}): Plugin {
-  // Hook context lives in closure variables, the usual plugin shape. Content state belongs in ContentLoader.
-  let loader: ContentLoader | undefined;
+  // Hook context lives in closure variables, the usual plugin shape. Content state belongs in ContentBuilder.
+  let builder: ContentBuilder | undefined;
   let logger: Logger | undefined;
   let root = process.cwd();
   let server: ViteDevServer | undefined;
@@ -69,12 +69,15 @@ function tomekit({
       return undefined;
     }
 
+    // An entry without a file points at the config, which defines its loader.
+    const file = path.resolve(root, first.file ?? config);
+
     return {
       err: {
-        id: path.resolve(root, first.file),
+        id: file,
         loc: {
           column: first.column ?? 1,
-          file: path.resolve(root, first.file),
+          file,
           line: first.line ?? 1,
         },
         message: new BrokenContentError(errors).message,
@@ -105,12 +108,14 @@ function tomekit({
   }
 
   async function load(): Promise<Build> {
-    if (loader === undefined) {
+    if (builder === undefined) {
       throw new PluginNotReadyError();
     }
 
-    const build = await loader.load();
+    const build = await builder.load();
     latestErrors = build.errors;
+    // Watch globs can point outside the root, which the dev watcher does not cover on its own.
+    server?.watcher.add(builder.watchFiles);
 
     if (!reported.has(build)) {
       reported.add(build);
@@ -139,13 +144,10 @@ function tomekit({
   }
 
   function reload(dev: ViteDevServer, file: string) {
-    const change = loader?.affected(file);
-
-    if (change === undefined) {
+    if (builder?.changed(file) !== true) {
       return;
     }
 
-    loader?.invalidate(change);
     void rebuild();
 
     for (const environment of Object.values(dev.environments)) {
@@ -181,7 +183,7 @@ function tomekit({
 
     configResolved(resolved) {
       ({ logger, root } = resolved);
-      loader = new ContentLoader({
+      builder = new ContentBuilder({
         configPath: path.resolve(root, config),
         root,
         runtime: RUNTIME,
@@ -224,7 +226,7 @@ function tomekit({
         return build.code;
       } finally {
         // For `vite build --watch`; the dev server watches through `configureServer`.
-        for (const file of loader?.watchFiles ?? []) {
+        for (const file of builder?.watchFiles ?? []) {
           this.addWatchFile(file);
         }
       }
