@@ -183,7 +183,7 @@ interface Loader<TFile extends FileInfo | undefined = FileInfo | undefined> {
   load: (
     context: LoadContext
   ) => LoadResult<TFile> | PromiseLike<LoadResult<TFile>>;
-  /** Glob patterns, relative to the project root, of files whose changes rerun `load` in dev, eg `"data/*.json"`. */
+  /** Glob patterns, relative to the project root, of files whose changes rerun `load` in dev, eg `"data/*.json"`. Start a pattern with `!` to leave matching files out, eg `"!data/drafts/**"`. */
   watch?: Glob | readonly Glob[];
 }
 

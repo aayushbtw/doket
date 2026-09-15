@@ -250,9 +250,16 @@ describe("directory", () => {
     ]);
   });
 
-  it("watches its include patterns inside the directory", () => {
+  it("watches its include patterns and leaves its exclude patterns out", () => {
     expect(
-      directory("content/posts", { include: ["*.md", "**/*.mdx"] }).watch
-    ).toStrictEqual(["content/posts/*.md", "content/posts/**/*.mdx"]);
+      directory("content/posts", {
+        exclude: "drafts/**",
+        include: ["*.md", "**/*.mdx"],
+      }).watch
+    ).toStrictEqual([
+      "content/posts/*.md",
+      "content/posts/**/*.mdx",
+      "!content/posts/drafts/**",
+    ]);
   });
 });

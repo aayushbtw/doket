@@ -25,7 +25,7 @@ export default defineConfig({
       schema: z.object({}),
     }),
     posts: defineCollection({
-      loader: directory("content/posts"),
+      loader: directory("content/posts", { exclude: "drafts/**" }),
       schema: z.object({ title: z.string() }),
     }),
   },
@@ -131,6 +131,7 @@ describe("ContentBuilder", () => {
 
     expect(changed("content/posts/notes.txt")).toBe(false);
     expect(changed("content/pages/about.md")).toBe(false);
+    expect(changed("content/posts/drafts/wip.md")).toBe(false);
     expect(changed("content/posts/new.md")).toBe(true);
     expect(changed("data/pages.json")).toBe(true);
     expect(changed("tomekit.config.ts")).toBe(true);

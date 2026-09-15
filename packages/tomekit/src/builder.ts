@@ -52,13 +52,21 @@ function globBase(pattern: string): string {
   return (wildcard === -1 ? segments : segments.slice(0, wildcard)).join("/");
 }
 
+/** Each collection's watch globs as absolute patterns, split into files to watch and `!` files to leave out. */
 function watchPatterns(root: string, config: Config | undefined) {
-  return Object.entries(config?.collections ?? {}).flatMap(
-    ([name, collection]) =>
-      [collection.loader.watch ?? []]
-        .flat()
-        .map((pattern) => ({ name, pattern: path.resolve(root, pattern) }))
-  );
+  return Object.entries(config?.collections ?? {}).map(([name, collection]) => {
+    const patterns = [collection.loader.watch ?? []].flat();
+
+    return {
+      exclude: patterns
+        .filter((pattern) => pattern.startsWith("!"))
+        .map((pattern) => path.resolve(root, pattern.slice(1))),
+      include: patterns
+        .filter((pattern) => !pattern.startsWith("!"))
+        .map((pattern) => path.resolve(root, pattern)),
+      name,
+    };
+  });
 }
 
 function isConfig(value: unknown): value is Config {
@@ -97,8 +105,8 @@ class ContentBuilder {
   get watchFiles(): string[] {
     const { configPath, root } = this.#options;
 
-    const bases = watchPatterns(root, this.#current).map(({ pattern }) =>
-      globBase(pattern)
+    const bases = watchPatterns(root, this.#current).flatMap(({ include }) =>
+      include.map(globBase)
     );
 
     return [...new Set([configPath, ...this.#dependencies, ...bases])];
@@ -137,7 +145,11 @@ class ContentBuilder {
       this.#results.clear();
     } else {
       const names = watchPatterns(root, this.#current)
-        .filter(({ pattern }) => path.matchesGlob(file, pattern))
+        .filter(
+          ({ exclude, include }) =>
+            include.some((pattern) => path.matchesGlob(file, pattern)) &&
+            !exclude.some((pattern) => path.matchesGlob(file, pattern))
+        )
         .map(({ name }) => name);
 
       if (names.length === 0) {

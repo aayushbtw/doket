@@ -130,7 +130,10 @@ function directory(
             : [],
       };
     },
-    watch: includes.map((pattern) => path.posix.join(folder, pattern)),
+    watch: [
+      ...includes.map((pattern) => path.posix.join(folder, pattern)),
+      ...excludes.map((pattern) => `!${path.posix.join(folder, pattern)}`),
+    ],
   };
 }
 
