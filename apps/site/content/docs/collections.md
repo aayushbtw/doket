@@ -82,6 +82,25 @@ To combine sources in one collection, call another loader's `load` inside yours 
 
 ## Schema
 
+`schema` validates each entry's metadata. Use any validator that implements [Standard Schema](https://standardschema.dev), eg Zod, Valibot or ArkType.
+
+```ts
+posts: {
+  loader: directory("content/posts"),
+  schema: z.object({
+    date: z.coerce.date(),
+    tags: z.array(z.string()).default([]),
+    title: z.string(),
+  }),
+}
+```
+
+- The schema's output becomes the document's `metadata`, with its types, so `date` above is a `Date` and `tags` is never missing.
+- It must produce an object. A file without frontmatter is validated as `{}`.
+- Frontmatter must be keys and values. A YAML list or a single value is an error.
+- An issue points at the key's line and column: `content/posts/hello.md:3:1: title:` and then the validator's message. A missing key points at its deepest parent that exists.
+- `directory()` reads `slug` before the schema runs. It stays in `metadata` only if the schema keeps it, and `z.object` drops keys it doesn't list.
+
 ## References
 
 `references` names the metadata fields that hold slugs of another collection. It sits next to `collections`, keyed by collection name and then by key path.
