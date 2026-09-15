@@ -41,12 +41,15 @@ export default defineConfig({
   collections: {
     authors: {
       loader: {
-        load: async ({ root }) => ({
-          entries: JSON.parse(
-            await readFile(path.join(root, "data/authors.json"), "utf-8")
-          ),
-        }),
-        watch: "data/authors.json",
+        load: async ({ root, watch }) => {
+          watch("data/authors.json");
+
+          return {
+            entries: JSON.parse(
+              await readFile(path.join(root, "data/authors.json"), "utf-8")
+            ),
+          };
+        },
       },
       schema: z.object({ name: z.string() }),
     },
@@ -59,12 +62,13 @@ Each entry has a `slug`, and optionally `metadata`, `body` and `file`. `load` re
 - `collection`: the collection's name
 - `root`: the project root, as an absolute path
 - `dev`: whether the Vite dev server is running
+- `watch`: marks files whose changes rerun `load` in dev
 
 Return `issues` for entries that couldn't load and `warnings` for anything else worth saying. The other entries still load. A `load` that throws fails the whole collection.
 
 ### Reloading in dev
 
-`watch` lists globs, relative to the project root, whose changes rerun `load`. Start a pattern with `!` to leave files out. `directory()` watches its own files. A loader without `watch` reruns only when the config changes.
+Call `watch` with globs, relative to the project root, whose changes rerun `load`. Start a pattern with `!` to leave files out. A `!` pattern only applies to the globs from the same call, so a loader that calls `directory(...).load(context)` keeps both sets. `directory()` watches its own files. A loader that never calls `watch` reruns only when the config changes.
 
 ### Sharing a loader
 
