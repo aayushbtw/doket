@@ -406,6 +406,43 @@ declare const unreferenced: WithReferences<
 
 export const unreferencedTitle: string = unreferenced.metadata.title;
 
+// A reference into a union schema types the members that have the field, and readonly arrays stay readonly.
+const unionReferences = defineConfig({
+  collections: {
+    authors: defineCollection({
+      loader: directory("content/authors"),
+      schema: z.object({}),
+    }),
+    media: defineCollection({
+      loader: directory("content/media"),
+      schema: z.discriminatedUnion("kind", [
+        z.object({
+          authors: z.array(z.string()).readonly(),
+          kind: z.literal("quote"),
+        }),
+        z.object({ kind: z.literal("video"), url: z.string() }),
+      ]),
+    }),
+  },
+  references: { media: { authors: "authors" } },
+});
+
+declare const referencedMedia: WithReferences<
+  InferDocument<typeof unionReferences.collections.media>,
+  NonNullable<typeof unionReferences.references>["media"],
+  { authors: "ada" }
+>;
+
+export const quoteAuthors: readonly "ada"[] | undefined =
+  referencedMedia.metadata.kind === "quote"
+    ? referencedMedia.metadata.authors
+    : undefined;
+
+export const videoUrl: string | undefined =
+  referencedMedia.metadata.kind === "video"
+    ? referencedMedia.metadata.url
+    : undefined;
+
 const people = defineCollection({
   loader: directory("content/people"),
   schema: z.object({

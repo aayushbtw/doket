@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ContentBuilder } from "../src/builder";
 import { ConfigLoadError } from "../src/errors";
@@ -49,8 +49,71 @@ export default defineConfig({
 });
 `;
 
+// Waits on `globalThis.tomekitGate`, so a test can change a file while `load` runs.
+const gated = `
+import { z } from "zod";
+import { defineConfig } from ${JSON.stringify(SOURCE)};
+
+export default defineConfig({
+  collections: {
+    data: {
+      loader: {
+        load: async () => {
+          globalThis.tomekitLoads = (globalThis.tomekitLoads ?? 0) + 1;
+          const run = globalThis.tomekitLoads;
+          await globalThis.tomekitGate;
+          return { entries: [{ slug: \`run\${run}\` }] };
+        },
+        watch: "data/*.json",
+      },
+      schema: z.object({}),
+    },
+  },
+});
+`;
+
+// Fails to import once `globalThis.tomekitGate` resolves.
+const failingConfig = `
+globalThis.tomekitStarted = true;
+await globalThis.tomekitGate;
+throw new Error("typo in config");
+`;
+
+const countedConfig = `globalThis.tomekitImports = (globalThis.tomekitImports ?? 0) + 1;\n${config}`;
+
+const watching = `
+import { z } from "zod";
+import { defineConfig } from ${JSON.stringify(SOURCE)};
+
+export default defineConfig({
+  collections: {
+    file: {
+      loader: { load: () => ({ entries: [] }), watch: "data/site.json" },
+      schema: z.object({}),
+    },
+    plain: { loader: { load: () => ({ entries: [] }) }, schema: z.object({}) },
+  },
+});
+`;
+
 declare global {
+  var tomekitGate: Promise<void> | undefined;
+  var tomekitImports: number | undefined;
   var tomekitLoads: number | undefined;
+  var tomekitStarted: boolean | undefined;
+}
+
+/** Sets `globalThis.tomekitGate` and returns the function that opens it. */
+function gate() {
+  let open: (() => void) | undefined;
+
+  globalThis.tomekitGate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+
+  return () => {
+    open?.();
+  };
 }
 
 const HELLO = "---\ntitle: Hello\n---\n";
@@ -58,7 +121,10 @@ const HELLO = "---\ntitle: Hello\n---\n";
 let cleanup: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
+  globalThis.tomekitGate = undefined;
+  globalThis.tomekitImports = 0;
   globalThis.tomekitLoads = 0;
+  globalThis.tomekitStarted = false;
   await cleanup?.();
 });
 
@@ -220,6 +286,71 @@ describe("ContentBuilder", () => {
     expect(await readFile(types, "utf-8")).toContain(
       '  "posts": "hello" | "typo";'
     );
+  });
+
+  it("watches a plain file pattern, and nothing for a loader without watch", async () => {
+    const { builder, changed, project } = await createBuilder({
+      "tomekit.config.ts": watching,
+    });
+
+    await builder.load();
+
+    expect(builder.watchFiles).toContain(
+      path.join(project.root, "data/site.json")
+    );
+    expect(changed("data/site.json")).toBe(true);
+    expect(changed("data/other.json")).toBe(false);
+  });
+
+  it("drops a result from a build that a change made stale", async () => {
+    const release = gate();
+
+    const { builder, changed } = await createBuilder({
+      "tomekit.config.ts": gated,
+    });
+
+    const stale = builder.load();
+
+    await vi.waitFor(
+      () => {
+        expect(globalThis.tomekitLoads).toBe(1);
+      },
+      { timeout: 5000 }
+    );
+    changed("data/pages.json");
+    release();
+
+    expect((await stale).code).toContain('"run1"');
+    expect((await builder.load()).code).toContain('"run2"');
+  });
+
+  it("keeps the config and build that replaced one still failing to import", async () => {
+    const release = gate();
+
+    const { builder, changed, project } = await createBuilder({
+      "content/posts/hello.md": HELLO,
+      "tomekit.config.ts": failingConfig,
+    });
+
+    const failing = builder.load();
+
+    await vi.waitFor(
+      () => {
+        expect(globalThis.tomekitStarted).toBe(true);
+      },
+      { timeout: 5000 }
+    );
+    await project.write({ "tomekit.config.ts": countedConfig });
+    changed("tomekit.config.ts");
+    const replacing = await builder.load();
+    release();
+
+    await expect(failing).rejects.toThrow(ConfigLoadError);
+    expect(await builder.load()).toBe(replacing);
+
+    changed("content/posts/new.md");
+    await builder.load();
+    expect(globalThis.tomekitImports).toBe(1);
   });
 
   it("warns about an unmapped tsconfig only on the first build", async () => {

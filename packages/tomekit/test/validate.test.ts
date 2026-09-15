@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 
-import type { Entry } from "../src/index";
+import type { Entry, StandardSchema } from "../src/index";
 import { validate } from "../src/validate";
 
 const titled = z.object({ title: z.string() });
@@ -31,6 +31,35 @@ describe("validate", () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ column: 1, line: 7 });
     expect(issues[0]?.message).toMatch(/^title: /u);
+  });
+
+  it("reads keys from path segments written as objects", async () => {
+    const keyed: StandardSchema = {
+      "~standard": {
+        validate: () => ({
+          issues: [
+            {
+              message: "expected a string",
+              path: [{ key: "tags" }, { key: 0 }],
+            },
+          ],
+        }),
+      },
+    };
+
+    const { issues = [] } = await validate(
+      { slug: "a" },
+      {},
+      keyed,
+      (keys) => ({
+        column: keys.length,
+        line: 1,
+      })
+    );
+
+    expect(issues).toStrictEqual([
+      { column: 2, line: 1, message: "tags.0: expected a string" },
+    ]);
   });
 
   it("leaves line and column out without a locator", async () => {

@@ -393,4 +393,90 @@ describe("loadCollection", () => {
       { metadata: { title: "B2" } },
     ]);
   });
+
+  it("drops cached entries the loader no longer returns", async () => {
+    let entries: Entry[] = [
+      { metadata: { title: "A" }, slug: "a" },
+      { metadata: { title: "B" }, slug: "b" },
+    ];
+
+    const shrinking = defineCollection({
+      loader: { load: () => ({ entries }) },
+      schema,
+    });
+
+    const cache: EntryCache = new Map();
+
+    await loadCollection("posts", shrinking, ROOT, { cache });
+    entries = [{ metadata: { title: "A" }, slug: "a" }];
+    await loadCollection("posts", shrinking, ROOT, { cache });
+
+    expect([...cache.keys()]).toStrictEqual(["a"]);
+  });
+
+  it("leaves out an entry without a file that the loader reported", async () => {
+    const { documents, errors } = await loadCollection(
+      "posts",
+      defineCollection({
+        loader: loader([{ metadata: { title: "A" }, slug: "a" }], {
+          issues: [{ message: "a has no date. Add one", slug: "a" }],
+        }),
+        schema,
+      }),
+      ROOT
+    );
+
+    expect(documents).toStrictEqual([]);
+    expect(messages(errors)).toStrictEqual([
+      'collections.get("posts").get("a"): a has no date. Add one',
+    ]);
+  });
+
+  it("names the entry of a transform that throws, and keeps what it threw", async () => {
+    const failing = defineCollection({
+      loader: loader([hello]),
+      schema,
+      transform: () => {
+        throw new Error("no heading");
+      },
+    });
+
+    const { errors } = await loadCollection("posts", failing, ROOT);
+
+    expect(messages(errors)).toStrictEqual([
+      "content/posts/hello.md: no heading",
+    ]);
+    expect(errors[0]?.cause).toBeInstanceOf(Error);
+  });
+
+  it("records the slugs it skipped, with their reasons, and the ones with errors", async () => {
+    const mixed = defineCollection({
+      loader: loader(
+        [
+          { metadata: { title: "Live" }, slug: "live" },
+          { metadata: { tags: ["draft"], title: "Draft" }, slug: "draft" },
+          { metadata: { title: "Hidden" }, slug: "hidden" },
+          { metadata: {}, slug: "untitled" },
+          { metadata: { title: "Reported" }, slug: "reported" },
+        ],
+        { issues: [{ message: "bad", slug: "reported" }] }
+      ),
+      schema,
+      transform: ({ metadata, slug }, { skip }) => {
+        if (metadata.tags.includes("draft")) {
+          return skip("draft");
+        }
+
+        return slug === "hidden" ? skip() : {};
+      },
+    });
+
+    const { broken, skipped } = await loadCollection("posts", mixed, ROOT);
+
+    expect([...broken]).toStrictEqual(["untitled", "reported"]);
+    expect([...skipped]).toStrictEqual([
+      ["draft", "draft"],
+      ["hidden", undefined],
+    ]);
+  });
 });

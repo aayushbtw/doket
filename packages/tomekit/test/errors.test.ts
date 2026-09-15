@@ -58,6 +58,9 @@ describe("errors", () => {
       "tomekit.config.ts failed to load: Unexpected token"
     );
     expect(error.cause).toBe(cause);
+    expect(new ConfigLoadError("tomekit.config.ts", "boom").message).toBe(
+      "tomekit.config.ts failed to load: boom"
+    );
   });
 
   it("prints a content error with as much location as it has", () => {

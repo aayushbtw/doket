@@ -81,6 +81,18 @@ describe("writeTypes", () => {
     );
   });
 
+  it("imports a config inside the types folder by a ./ path", async () => {
+    const root = await project();
+
+    await writeTypes(root, path.join(root, "tomekit.config.ts"), [
+      { name: "posts", slugs: [] },
+    ]);
+
+    expect(await readFile(path.join(root, "content.d.ts"), "utf-8")).toContain(
+      'import type config from "./tomekit.config";'
+    );
+  });
+
   it("writes nothing when the types are unchanged", async () => {
     const root = await project();
     const directory = path.join(root, ".tomekit");
