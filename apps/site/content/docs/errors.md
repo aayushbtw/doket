@@ -28,7 +28,7 @@ Content errors come from:
 - two documents with the same slug
 - `transform`, eg a function in what it returns
 - a loader that throws, or reports `issues`
-- a [reference](/docs/collections#references) to a slug that no document has
+- a [reference](/collections#references) to a slug that no document has
 
 ## Warnings
 

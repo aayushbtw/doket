@@ -721,7 +721,7 @@ function extendsSection(node: Statement) {
 }
 
 function url(item: Item) {
-  return `/docs/${item.entryPoint.slug}/${item.kind.directory}/${item.name}`;
+  return `/${item.entryPoint.slug}/${item.kind.directory}/${item.name}`;
 }
 
 function itemPage(item: Item) {

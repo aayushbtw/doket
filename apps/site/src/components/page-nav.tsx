@@ -1,6 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { Link } from "@tanstack/react-router";
 
+import { docLink } from "#/lib/links";
+
 import {
   borderWidths,
   colors,
@@ -75,19 +77,14 @@ function PageNav({ next, previous }: PageNavProps) {
   return (
     <nav {...stylex.props(typography.sm, styles.nav)}>
       {previous ? (
-        <Link
-          params={{ slug: previous.slug }}
-          to="/docs/$slug"
-          {...stylex.props(styles.card)}
-        >
+        <Link {...docLink(previous.slug)} {...stylex.props(styles.card)}>
           <span {...stylex.props(styles.direction)}>Previous</span>
           <span {...stylex.props(styles.title)}>{previous.title}</span>
         </Link>
       ) : null}
       {next ? (
         <Link
-          params={{ slug: next.slug }}
-          to="/docs/$slug"
+          {...docLink(next.slug)}
           {...stylex.props(styles.card, styles.next)}
         >
           <span {...stylex.props(styles.direction)}>Next</span>

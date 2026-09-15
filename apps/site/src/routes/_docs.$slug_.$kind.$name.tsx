@@ -4,7 +4,7 @@ import { Article } from "#/components/article";
 import { getReference } from "#/lib/docs";
 
 // Not sorted: `loader` must come before `head` and `component`, which infer `loaderData` from it.
-export const Route = createFileRoute("/docs/$slug_/$kind/$name")({
+export const Route = createFileRoute("/_docs/$slug_/$kind/$name")({
   loader: ({ params }) => getReference({ data: params }),
   head: ({ loaderData }) => ({
     meta: [{ title: `${loaderData?.metadata.name ?? "Reference"} · tomekit` }],

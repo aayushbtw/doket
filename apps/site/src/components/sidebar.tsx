@@ -1,6 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { Link, useParams } from "@tanstack/react-router";
 
+import { docLink, homeSlug } from "#/lib/links";
+
 import {
   below,
   colors,
@@ -73,7 +75,7 @@ const styles = stylex.create({
 });
 
 function Sidebar({ nav }: SidebarProps) {
-  const { slug: current } = useParams({ strict: false });
+  const { slug: current = homeSlug } = useParams({ strict: false });
 
   return (
     <aside {...stylex.props(typography.xs, styles.sidebar)}>
@@ -84,8 +86,7 @@ function Sidebar({ nav }: SidebarProps) {
             {pages.map(({ slug, title }) => (
               <Link
                 key={slug}
-                params={{ slug }}
-                to="/docs/$slug"
+                {...docLink(slug)}
                 {...stylex.props(
                   styles.link,
                   slug === current && styles.active

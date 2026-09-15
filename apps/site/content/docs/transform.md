@@ -48,7 +48,7 @@ transform: ({ metadata }, { dev, skip }) =>
   metadata.draft && !dev ? skip("draft") : {},
 ```
 
-A skipped document isn't in `documents()`, `slugs()` or the generated types. A [reference](/docs/collections#references) to it fails the build.
+A skipped document isn't in `documents()`, `slugs()` or the generated types. A [reference](/collections#references) to it fails the build.
 
 ## Sharing a transform
 
