@@ -63,7 +63,7 @@ describe("writeTypes", () => {
 
     const generatedNames = [
       ...generated.matchAll(/^export (?:type|declare const) (\w+)/gmu),
-    ].map(([, name]) => name);
+    ].map(([, name]) => name ?? "");
 
     const fallbackNames = (
       /^export \{(?<names>[^}]*)\}/mu.exec(fallback)?.groups?.names ?? ""
@@ -72,7 +72,13 @@ describe("writeTypes", () => {
       .map((name) => name.replace(/^\s*type\s+/u, "").trim())
       .filter((name) => name !== "");
 
-    expect(generatedNames.toSorted()).toStrictEqual(fallbackNames.toSorted());
+    function byName(left: string, right: string) {
+      return left.localeCompare(right);
+    }
+
+    expect(generatedNames.toSorted(byName)).toStrictEqual(
+      fallbackNames.toSorted(byName)
+    );
   });
 
   it("writes nothing when the types are unchanged", async () => {
