@@ -12,6 +12,9 @@
     "preview": "vp preview"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "catalog:",
+    "@radix-ui/colors": "catalog:",
+    "@stylexjs/stylex": "catalog:",
     "@tanstack/highlight": "^0.1.0",
     "@tanstack/markdown": "^0.0.15",
     "@tanstack/react-router": "^1.170.36",
@@ -21,14 +24,13 @@
     "tomekit": "workspace:*"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
+    "@stylexjs/unplugin": "catalog:",
     "@tanstack/intent": "^0.4.0",
     "@tanstack/router-cli": "^1.167.36",
     "@types/node": "catalog:",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "tailwindcss": "^4.3.3",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",

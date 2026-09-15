@@ -1,4 +1,4 @@
-import tailwindcss from "@tailwindcss/vite";
+import stylex from "@stylexjs/unplugin/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
@@ -10,8 +10,9 @@ const config = defineConfig({
 
     return [
       tomekit(),
-      tailwindcss(),
       tanstackStart({ prerender: { crawlLinks: true, enabled: true } }),
+      // Before the React plugin, or Fast Refresh breaks.
+      stylex({ useCSSLayers: true }),
       viteReact(),
     ];
   }),

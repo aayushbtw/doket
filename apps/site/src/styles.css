@@ -1,1 +1,99 @@
-@import "tailwindcss";
+/* StyleX appends its generated CSS to this file at build time. */
+@import "@fontsource-variable/inter";
+@import "@radix-ui/colors/black-alpha.css";
+@import "@radix-ui/colors/gray-dark.css";
+@import "@radix-ui/colors/gray-dark-alpha.css";
+
+/*
+ * The reference's global reset, which StyleX can't express. It sits in a layer
+ * because StyleX's rules are layered, and unlayered CSS would override all of them.
+ */
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  * {
+    -webkit-font-smoothing: antialiased;
+    border: 0;
+    color: inherit;
+    font-family: inherit;
+    font-feature-settings:
+      "calt", "ccmp", "locl", "kern", "tnum", "zero", "cv11";
+    font-size: inherit;
+    font-variant-numeric: tabular-nums;
+    font-weight: inherit;
+    line-height: inherit;
+    margin: 0;
+    padding: 0;
+    scroll-behavior: smooth;
+    text-decoration: none;
+    text-rendering: optimizeLegibility;
+    text-transform: none;
+    text-wrap: pretty;
+    vertical-align: baseline;
+  }
+
+  html {
+    overscroll-behavior-y: none;
+    scrollbar-width: none;
+  }
+
+  body {
+    line-height: 1.5;
+  }
+
+  img,
+  picture,
+  video,
+  canvas,
+  svg {
+    display: block;
+    max-width: 100%;
+  }
+
+  input,
+  button,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    padding: 0;
+    font: inherit;
+    text-align: unset;
+    cursor: pointer;
+    user-select: none;
+    background: none;
+    border: none;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  ul,
+  li,
+  ol {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+}
+
+/* Line numbers are spans in the highlighter's HTML, which StyleX can't select. */
+pre[data-lang] code .th-line::before {
+  width: 2ch;
+  margin-right: 16px;
+  padding-right: 0;
+  color: var(--gray-a6);
+}
+
+pre[data-lang] code:not(:has(> .th-line + .th-line)) > .th-line::before {
+  display: none;
+}

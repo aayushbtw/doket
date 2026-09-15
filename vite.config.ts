@@ -51,6 +51,11 @@ export default defineConfig({
         files: ["packages/*/test/**/*.ts"],
         rules: { "promise/prefer-await-to-then": "off" },
       },
+      {
+        files: ["apps/site/vite.config.ts"],
+        // `@stylexjs/unplugin/vite` is typed as returning `any`; its typed factory skips the Vite hooks that emit CSS.
+        rules: { "typescript/no-unsafe-return": "off" },
+      },
     ],
     plugins: ["eslint", "typescript", "oxc", "promise", "jsdoc"],
     rules: {
