@@ -460,3 +460,5 @@ export {
   UnserializableInstanceError,
   UnserializableValueError,
 } from "./errors";
+
+export type { ContentSubject, Issue } from "./errors";
