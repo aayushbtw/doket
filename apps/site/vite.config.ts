@@ -17,6 +17,23 @@ const config = defineConfig({
     ];
   }),
   resolve: { tsconfigPaths: true },
+  run: {
+    tasks: {
+      "api-reference": {
+        command: "node scripts/api-reference.ts",
+        dependsOn: ["tomekit#build"],
+      },
+      build: {
+        command: "vp build",
+        dependsOn: ["api-reference"],
+      },
+      dev: {
+        cache: false,
+        command: "vp dev --port 3000",
+        dependsOn: ["api-reference"],
+      },
+    },
+  },
 });
 
 export default config;

@@ -5,6 +5,13 @@ import type { DocumentOf } from "tomekit/content";
 
 import { sections } from "#/lib/sections";
 
+/** A reference page's route params: its index page's slug, its kind's folder and its name. */
+interface ReferenceParams {
+  kind: string;
+  name: string;
+  slug: string;
+}
+
 function compareDocs(a: DocumentOf<"docs">, b: DocumentOf<"docs">) {
   const bySection =
     sections.indexOf(a.metadata.section) - sections.indexOf(b.metadata.section);
@@ -52,4 +59,16 @@ const getDoc = createServerFn({ method: "GET" })
     };
   });
 
-export { getDoc, getNav };
+const getReference = createServerFn({ method: "GET" })
+  .validator((params: ReferenceParams) => params)
+  .handler(({ data: { kind, name, slug } }) => {
+    const page = collections.get("reference").get(`${slug}/${kind}/${name}`);
+
+    if (!page) {
+      throw notFound();
+    }
+
+    return page;
+  });
+
+export { getDoc, getNav, getReference };
