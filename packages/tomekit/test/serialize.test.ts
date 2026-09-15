@@ -55,6 +55,19 @@ describe("serialize", () => {
     expect(await evaluate(serialize(value))).toStrictEqual(value);
   });
 
+  it("keeps holes in sparse arrays", async () => {
+    const sparse: ContentValue[] = [1];
+
+    sparse[2] = 3;
+
+    const trailing: ContentValue[] = [1];
+
+    trailing.length = 2;
+
+    expect(await evaluate(serialize(sparse))).toStrictEqual(sparse);
+    expect(await evaluate(serialize(trailing))).toStrictEqual(trailing);
+  });
+
   it("keeps a __proto__ key as a key", async () => {
     const value: unknown = JSON.parse('{"__proto__":{"polluted":true}}');
 

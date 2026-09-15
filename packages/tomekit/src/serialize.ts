@@ -47,7 +47,22 @@ function write(value: ContentValue, state: WriteState): string {
   }
 
   if (isList(value)) {
-    return `[${value.map((entry) => write(entry, state)).join(",")}]`;
+    const items = Array.from({ length: value.length }, (_, index) => {
+      if (index in value) {
+        return write(value[index], state);
+      }
+
+      // `JSON.parse` would read a hole back as `null`.
+      state.json = false;
+
+      return "";
+    });
+
+    // A trailing hole needs its own comma: `[1,,]` has two items, `[1,]` one.
+    const trailing =
+      value.length > 0 && !(value.length - 1 in value) ? "," : "";
+
+    return `[${items.join(",")}${trailing}]`;
   }
 
   if (isFields(value)) {

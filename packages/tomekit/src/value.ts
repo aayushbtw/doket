@@ -141,7 +141,11 @@ function assertContentValue(
   } else if (boxed instanceof Set) {
     children = [...boxed].map((entry, index) => [`${at}[${index}]`, entry]);
   } else if (Array.isArray(boxed)) {
-    children = boxed.map((entry, index) => [`${at}[${index}]`, entry]);
+    // `entries()`, not `map`: `map` keeps a sparse array's holes, which the loop below can't destructure.
+    children = Array.from(boxed.entries(), ([index, entry]) => [
+      `${at}[${index}]`,
+      entry,
+    ]);
   } else {
     if (!PLAIN_PROTOTYPES.has(Reflect.getPrototypeOf(boxed))) {
       throw new UnserializableInstanceError(boxed.constructor.name, at);

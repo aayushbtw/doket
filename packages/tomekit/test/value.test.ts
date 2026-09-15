@@ -1,10 +1,33 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { assertContentValue } from "../src/value";
+import { assertContentValue, isPlainObject } from "../src/value";
 
 interface Cyclic {
   self?: Cyclic;
 }
+
+describe("isPlainObject", () => {
+  it("accepts object literals and objects without a prototype", () => {
+    expect(isPlainObject({ a: 1 })).toBe(true);
+    expect(isPlainObject(Object.create(null))).toBe(true);
+  });
+
+  it("rejects primitives, arrays and instances of classes", () => {
+    for (const value of [
+      null,
+      undefined,
+      "a",
+      1,
+      [],
+      new Date(0),
+      new (class {
+        name = "Ada";
+      })(),
+    ]) {
+      expect(isPlainObject(value)).toBe(false);
+    }
+  });
+});
 
 describe("assertContentValue", () => {
   it("accepts every value tomekit can write", () => {
@@ -21,6 +44,23 @@ describe("assertContentValue", () => {
     }).not.toThrow();
   });
 
+  it("accepts sparse arrays, and checks what they hold", () => {
+    const holes: unknown[] = [1];
+
+    holes.length = 3;
+
+    const sparse: unknown[] = [1];
+
+    sparse[2] = () => 1;
+
+    expect(() => {
+      assertContentValue(holes);
+    }).not.toThrow();
+    expect(() => {
+      assertContentValue(sparse);
+    }).toThrow("cannot write a function at [2] into content");
+  });
+
   it("names the key path of values that cannot become source", () => {
     expect(() => {
       assertContentValue({ a: [{ fn: () => 1 }] });
@@ -34,6 +74,13 @@ describe("assertContentValue", () => {
     expect(() => {
       assertContentValue(new Map([["key", Symbol("s")]]));
     }).toThrow("cannot write a symbol at [0][1] into content");
+    expect(() => {
+      assertContentValue({
+        a: new (class {
+          name = "Ada";
+        })(),
+      });
+    }).toThrow("cannot write an object at a into content");
   });
 
   it("rejects circular references, but not a value used twice", () => {
