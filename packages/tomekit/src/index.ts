@@ -69,7 +69,14 @@ interface Source<
   slug: string;
 }
 
-/** One document as a loader returns it, before the schema and `transform`. */
+/**
+ * One document as a loader returns it, before the schema and `transform`.
+ *
+ * @example
+ * ```ts
+ * const hello: Entry = { body: "# Hello", metadata: { title: "Hello" }, slug: "hello" };
+ * ```
+ */
 interface Entry<TFile extends FileInfo | undefined = FileInfo | undefined> {
   /**
    * Becomes the document's `body`, eg a file's text after the frontmatter.
@@ -89,7 +96,18 @@ interface Entry<TFile extends FileInfo | undefined = FileInfo | undefined> {
   slug: string;
 }
 
-/** What a loader's `load` receives. */
+/**
+ * What a loader's `load` receives.
+ *
+ * @example
+ * ```ts
+ * const pages: Loader = {
+ *   load: async ({ collection, root }) => ({
+ *     entries: JSON.parse(await readFile(path.join(root, `data/${collection}.json`), "utf-8")),
+ *   }),
+ * };
+ * ```
+ */
 interface LoadContext {
   /** The name of the collection, eg `posts`. */
   collection: string;
@@ -97,7 +115,17 @@ interface LoadContext {
   root: string;
 }
 
-/** A problem a loader found, eg a file whose frontmatter does not parse. tomekit reports it like a schema error. */
+/**
+ * A problem a loader found, eg a file whose frontmatter does not parse. tomekit reports it like a schema error.
+ *
+ * @example
+ * ```ts
+ * const pages: Loader = {
+ *   load: () => ({ entries: [], issues: [{ message: "draft has no title. Add one", slug: "draft" }] }),
+ * };
+ * // collections.get("pages").get("draft"): draft has no title. Add one
+ * ```
+ */
 interface LoadIssue {
   /** What went wrong underneath, eg the error `readFile` threw. Becomes the `ContentError`'s `cause`. */
   cause?: unknown;
@@ -113,7 +141,19 @@ interface LoadIssue {
   slug?: string;
 }
 
-/** What `load` returns. */
+/**
+ * What `load` returns.
+ *
+ * @example
+ * ```ts
+ * const pages: Loader = {
+ *   load: () => ({
+ *     entries: [{ slug: "hello" }],
+ *     warnings: ["pages: the API is unreachable, so these pages come from the cache"],
+ *   }),
+ * };
+ * ```
+ */
 interface LoadResult<
   TFile extends FileInfo | undefined = FileInfo | undefined,
 > {

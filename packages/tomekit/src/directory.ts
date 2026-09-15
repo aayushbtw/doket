@@ -13,7 +13,14 @@ const DEFAULT_INCLUDE = "**/*.md";
  */
 type Glob = "**/*.md" | "**/*.mdx" | "*.md" | (string & Record<never, never>);
 
-/** Options for {@link directory}. */
+/**
+ * Options for {@link directory}.
+ *
+ * @example
+ * ```ts
+ * directory("content/posts", { exclude: "drafts/**", include: ["**\/*.md", "**\/*.mdx"] })
+ * ```
+ */
 interface DirectoryOptions {
   /** Glob patterns, relative to the directory, of files to leave out, eg `"drafts/**"`. */
   exclude?: Glob | readonly Glob[];
