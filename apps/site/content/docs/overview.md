@@ -24,4 +24,4 @@ content/
 | ---------- | ------- |
 | Vite       | 8+      |
 | TypeScript | 7+      |
-| Node       | 22.17+  |
+| Node       | 24+     |
